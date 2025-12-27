@@ -88,7 +88,7 @@ const App: React.FC = () => {
       .map(k => ({ term: k.term, location: k.location }));
 
     if (activeKeywordConfigs.length === 0) {
-      alert("Please add and enable some keywords first!");
+      alert("Please add and enable some keywords in the Keywords tab first!");
       return;
     }
 
@@ -114,10 +114,13 @@ const App: React.FC = () => {
         });
         
         if (view !== 'leads') setView('leads');
+      } else {
+        alert("The scan completed but no new leads were found for your current keywords.");
       }
-    } catch (err) {
-      console.error("Discovery process error:", err);
-      alert("Lead discovery failed. Please try again in a few moments.");
+    } catch (err: any) {
+      console.error("Discovery error details:", err);
+      const errorMessage = err?.message || "Internal API Error";
+      alert(`Lead discovery failed: ${errorMessage}. Please check your internet connection or ensure your keywords are not too restrictive.`);
     } finally {
       setIsRefreshing(false);
     }

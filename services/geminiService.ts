@@ -3,7 +3,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Lead } from "../types.ts";
 
 export const analyzeLeadWithAI = async (leadContent: string, keywords: string[]): Promise<Lead['aiAnalysis']> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("API Key is missing. Please check your configuration.");
+  
+  const ai = new GoogleGenAI({ apiKey });
   const prompt = `Analyze this social media post for business lead potential. 
   The relevant keywords are: ${keywords.join(', ')}.
   
@@ -31,7 +34,7 @@ export const analyzeLeadWithAI = async (leadContent: string, keywords: string[])
 
     return JSON.parse(response.text.trim());
   } catch (error) {
-    console.error("Gemini Analysis Error:", error);
+    console.error("AI Analysis Failed:", error);
     return {
       summary: "Could not analyze post.",
       suggestedReply: "Hello, I saw your post and would love to help. Let's connect!",
@@ -43,23 +46,20 @@ export const analyzeLeadWithAI = async (leadContent: string, keywords: string[])
 export const discoverNewLeads = async (keywordConfigs: { term: string; location?: string }[]): Promise<Partial<Lead>[]> => {
   if (!keywordConfigs || keywordConfigs.length === 0) return [];
   
-  // Instance created inside call to ensure process.env.API_KEY is accessible.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("Environment API Key is not available.");
 
-  const searchQueries = keywordConfigs.map(k => `${k.term} ${k.location ? `in ${k.location}` : ''}`).join(', ');
+  const ai = new GoogleGenAI({ apiKey });
 
-  const prompt = `Act as an advanced social media monitoring tool. 
-  Generate 8 highly realistic, unique social media posts (Reddit, Twitter, or LinkedIn) where users express a specific business need or "hiring/looking for" intent related to: ${searchQueries}. 
+  const searchQueries = keywordConfigs.map(k => `${k.term}${k.location ? ` in ${k.location}` : ''}`).join(', ');
+
+  const prompt = `Act as an advanced social media listening engine. 
+  Generate 8 realistic, distinct social media posts (Reddit, Twitter, or LinkedIn) where users express a genuine business need related to: ${searchQueries}. 
   
-  Rules:
-  1. If a location is provided (e.g. Austin), the post must mention needing the service in that specific area.
-  2. Vary the tone (formal, casual, frustrated, urgent).
-  3. Include realistic author handles.
+  Return the results as a JSON object with a "leads" array.
+  Each lead object must contain: platform, author, content, intentScore (0-100), url (mock), and location.
   
-  Return the output as a JSON array. 
-  Objects must contain: platform, author, content, intentScore (0-100), url (mock), and location.
-  
-  Example format: [{"platform": "Reddit", "author": "dev_guru", "content": "Looking for local web designers...", "intentScore": 95, "url": "https://reddit.com/r/...", "location": "Austin, TX"}]`;
+  Ensure posts are professional and do not contain sensitive or prohibited content to avoid triggering safety filters.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -68,30 +68,35 @@ export const discoverNewLeads = async (keywordConfigs: { term: string; location?
       config: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              platform: { type: Type.STRING, enum: ["Reddit", "Twitter", "Facebook", "LinkedIn", "Quora"] },
-              author: { type: Type.STRING },
-              content: { type: Type.STRING },
-              intentScore: { type: Type.NUMBER },
-              url: { type: Type.STRING },
-              location: { type: Type.STRING }
-            },
-            required: ["platform", "author", "content", "intentScore", "url"]
-          }
+          type: Type.OBJECT,
+          properties: {
+            leads: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  platform: { type: Type.STRING, enum: ["Reddit", "Twitter", "Facebook", "LinkedIn", "Quora"] },
+                  author: { type: Type.STRING },
+                  content: { type: Type.STRING },
+                  intentScore: { type: Type.NUMBER },
+                  url: { type: Type.STRING },
+                  location: { type: Type.STRING }
+                },
+                required: ["platform", "author", "content", "intentScore", "url"]
+              }
+            }
+          },
+          required: ["leads"]
         }
       }
     });
 
     const rawText = response.text.trim();
-    // Handling potential markdown formatting from model
     const cleanJson = rawText.startsWith('```') ? rawText.replace(/```json|```/g, '').trim() : rawText;
-    
-    return JSON.parse(cleanJson);
+    const parsed = JSON.parse(cleanJson);
+    return parsed.leads || [];
   } catch (error) {
-    console.error("Discovery API Error:", error);
+    console.error("Discovery Engine Failed:", error);
     throw error;
   }
 };
