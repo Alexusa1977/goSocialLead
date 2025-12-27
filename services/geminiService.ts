@@ -3,7 +3,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Lead } from "../types.ts";
 
 export const analyzeLeadWithAI = async (leadContent: string, keywords: string[]): Promise<Lead['aiAnalysis']> => {
-  // Always create new instance inside the function to ensure process.env.API_KEY is available
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   const prompt = `Analyze this social media post for business lead potential. 
   The relevant keywords are: ${keywords.join(', ')}.
@@ -43,25 +42,24 @@ export const analyzeLeadWithAI = async (leadContent: string, keywords: string[])
 
 export const discoverNewLeads = async (keywordConfigs: { term: string; location?: string }[]): Promise<Partial<Lead>[]> => {
   if (!keywordConfigs || keywordConfigs.length === 0) return [];
+  
+  // Instance created inside call to ensure process.env.API_KEY is accessible.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
   const searchQueries = keywordConfigs.map(k => `${k.term} ${k.location ? `in ${k.location}` : ''}`).join(', ');
 
-  const prompt = `Act as a real-time social media monitoring system. 
-  Simulate the discovery of 6 highly realistic, unique social media posts (Reddit, Twitter, or LinkedIn) where users express a clear intent, problem, or need related to these specific keyword and location combinations: ${searchQueries}. 
+  const prompt = `Act as an advanced social media monitoring tool. 
+  Generate 8 highly realistic, unique social media posts (Reddit, Twitter, or LinkedIn) where users express a specific business need or "hiring/looking for" intent related to: ${searchQueries}. 
   
-  CRITICAL: If a location is specified for a keyword, the post content MUST reflect that local context (e.g., "Looking for a plumber in Austin").
+  Rules:
+  1. If a location is provided (e.g. Austin), the post must mention needing the service in that specific area.
+  2. Vary the tone (formal, casual, frustrated, urgent).
+  3. Include realistic author handles.
   
-  Return the output as a JSON array of objects. 
-  Each object must have:
-  - platform: "Reddit", "Twitter", or "LinkedIn"
-  - author: A realistic username
-  - content: A detailed post content expressing need or asking for help
-  - intentScore: A number from 0 to 100
-  - url: A mock URL string
-  - location: The city/state if applicable, otherwise "Global"
+  Return the output as a JSON array. 
+  Objects must contain: platform, author, content, intentScore (0-100), url (mock), and location.
   
-  Only return the JSON array.`;
+  Example format: [{"platform": "Reddit", "author": "dev_guru", "content": "Looking for local web designers...", "intentScore": 95, "url": "https://reddit.com/r/...", "location": "Austin, TX"}]`;
 
   try {
     const response = await ai.models.generateContent({
@@ -87,10 +85,11 @@ export const discoverNewLeads = async (keywordConfigs: { term: string; location?
       }
     });
 
-    const text = response.text.trim();
-    // Extra safety: strip potential markdown code blocks
-    const jsonStr = text.startsWith('```') ? text.replace(/```json|```/g, '') : text;
-    return JSON.parse(jsonStr);
+    const rawText = response.text.trim();
+    // Handling potential markdown formatting from model
+    const cleanJson = rawText.startsWith('```') ? rawText.replace(/```json|```/g, '').trim() : rawText;
+    
+    return JSON.parse(cleanJson);
   } catch (error) {
     console.error("Discovery API Error:", error);
     throw error;
