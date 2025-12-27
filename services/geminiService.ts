@@ -2,7 +2,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Lead } from "../types.ts";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize with a fallback empty string if API_KEY is missing to prevent crash, 
+// though the platform should always provide it.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
 export const analyzeLeadWithAI = async (leadContent: string, keywords: string[]): Promise<Lead['aiAnalysis']> => {
   const prompt = `Analyze this social media post for business lead potential. 
