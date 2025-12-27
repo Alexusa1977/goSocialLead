@@ -12,6 +12,12 @@ const App: React.FC = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Settings state
+  const [settings, setSettings] = useState({
+    autoScan: true,
+    emailNotifications: false,
+  });
 
   // Initial dummy data for better UX
   useEffect(() => {
@@ -105,6 +111,9 @@ const App: React.FC = () => {
     }, {} as Record<Platform, number>)
   };
 
+  const toggleAutoScan = () => setSettings(s => ({ ...s, autoScan: !s.autoScan }));
+  const toggleEmailNotifs = () => setSettings(s => ({ ...s, emailNotifications: !s.emailNotifications }));
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar currentView={view} onNavigate={setView} />
@@ -133,30 +142,55 @@ const App: React.FC = () => {
               onAdd={handleAddKeyword} 
               onRemove={handleRemoveKeyword} 
               onToggle={handleToggleKeyword} 
+              onScan={refreshLeads}
             />
           )}
           {view === 'settings' && (
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto text-center">
-              <h2 className="text-2xl font-bold mb-4">Settings</h2>
-              <p className="text-slate-500 mb-8">Configure your AI agent and platform connections.</p>
-              <div className="space-y-4 text-left">
-                <div className="p-4 border border-slate-200 rounded-xl flex justify-between items-center">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto">
+              <div className="text-center mb-10">
+                <h2 className="text-2xl font-bold mb-2">Platform Settings</h2>
+                <p className="text-slate-500">Configure your automation engine and preference.</p>
+              </div>
+              
+              <div className="space-y-6">
+                <div className="group p-5 border border-slate-100 bg-slate-50/50 rounded-2xl flex justify-between items-center transition-all hover:border-indigo-100 hover:bg-white">
                   <div>
-                    <h4 className="font-bold">Auto-Scan</h4>
-                    <p className="text-sm text-slate-400">Scan socials every 1 hour automatically</p>
+                    <h4 className="font-bold text-slate-900">Auto-Discovery Scan</h4>
+                    <p className="text-sm text-slate-500">Scan socials automatically in the background</p>
                   </div>
-                  <div className="w-12 h-6 bg-indigo-600 rounded-full flex items-center justify-end px-1 cursor-pointer">
-                    <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </div>
+                  <button 
+                    onClick={toggleAutoScan}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${settings.autoScan ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.autoScan ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
                 </div>
-                <div className="p-4 border border-slate-200 rounded-xl flex justify-between items-center opacity-50">
+
+                <div className="group p-5 border border-slate-100 bg-slate-50/50 rounded-2xl flex justify-between items-center transition-all hover:border-indigo-100 hover:bg-white">
                   <div>
-                    <h4 className="font-bold">Email Notifications</h4>
-                    <p className="text-sm text-slate-400">Get digests of high-intent leads</p>
+                    <h4 className="font-bold text-slate-900">Email Notifications</h4>
+                    <p className="text-sm text-slate-500">Receive high-intent lead alerts via email</p>
                   </div>
-                  <div className="w-12 h-6 bg-slate-300 rounded-full flex items-center px-1">
-                    <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </div>
+                  <button 
+                    onClick={toggleEmailNotifs}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${settings.emailNotifications ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.emailNotifications ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="mt-8 pt-8 border-t border-slate-100">
+                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">API Configuration</h3>
+                   <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between">
+                     <div className="flex items-center space-x-3">
+                       <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold">G</div>
+                       <div>
+                         <p className="text-sm font-bold text-slate-900">Gemini AI Model</p>
+                         <p className="text-xs text-indigo-600">Flash 2.5 Active</p>
+                       </div>
+                     </div>
+                     <span className="text-xs font-bold text-slate-400">Connected</span>
+                   </div>
                 </div>
               </div>
             </div>
