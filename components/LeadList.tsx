@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Lead } from '../types';
-import { analyzeLeadWithAI } from '../services/geminiService';
+import { Lead } from '../types.ts';
+import { analyzeLeadWithAI } from '../services/geminiService.ts';
 
 interface LeadListProps {
   leads: Lead[];

@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Keyword, Lead, Stats, Platform } from './types';
-import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import LeadList from './components/LeadList';
-import KeywordManager from './components/KeywordManager';
-import { discoverNewLeads } from './services/geminiService';
+import React, { useState, useEffect } from 'react';
+import { Keyword, Lead, Stats, Platform } from './types.ts';
+import Sidebar from './components/Sidebar.tsx';
+import Dashboard from './components/Dashboard.tsx';
+import LeadList from './components/LeadList.tsx';
+import KeywordManager from './components/KeywordManager.tsx';
+import { discoverNewLeads } from './services/geminiService.ts';
 
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'leads' | 'keywords' | 'settings'>('dashboard');
