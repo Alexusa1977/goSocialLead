@@ -13,11 +13,17 @@ interface LeadListProps {
 const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, keywords }) => {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [isBtnRefreshing, setIsBtnRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsBtnRefreshing(true);
+    await onRefresh();
+    setIsBtnRefreshing(false);
+  };
 
   const handleAnalyze = async (lead: Lead) => {
     setAnalyzingId(lead.id);
     const analysis = await analyzeLeadWithAI(lead.content, keywords);
-    // In a real app, we'd update the state in the parent
     lead.aiAnalysis = analysis;
     setSelectedLead({ ...lead });
     setAnalyzingId(null);
@@ -41,11 +47,21 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
           <p className="text-slate-500">Recent social mentions matching your keywords.</p>
         </div>
         <button 
-          onClick={onRefresh}
-          className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+          onClick={handleManualRefresh}
+          disabled={isBtnRefreshing}
+          className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
         >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-          Scan Socials
+          {isBtnRefreshing ? (
+            <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          )}
+          {isBtnRefreshing ? 'Scanning...' : 'Scan Socials'}
         </button>
       </div>
 
@@ -110,7 +126,13 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
                     className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 disabled:opacity-50 transition-colors flex items-center"
                    >
                     {analyzingId === lead.id ? (
-                      <span className="flex items-center"><svg className="animate-spin h-3 w-3 mr-1" viewBox="0 0 24 24"></svg>Analyzing...</span>
+                      <span className="flex items-center">
+                        <svg className="animate-spin h-3 w-3 mr-1" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Analyzing...
+                      </span>
                     ) : 'AI Analysis'}
                    </button>
                 </div>
@@ -166,7 +188,10 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center py-20">
-              <svg className="w-12 h-12 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              <svg className="w-12 h-12 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
               <p className="text-sm font-medium">Select a lead from the feed<br/>to view details</p>
             </div>
           )}

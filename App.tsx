@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Keyword, Lead, Stats, Platform } from './types.ts';
 import Sidebar from './components/Sidebar.tsx';
 import Dashboard from './components/Dashboard.tsx';
@@ -76,30 +76,61 @@ const App: React.FC = () => {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, status } : l));
   };
 
-  const refreshLeads = async () => {
+  // Wrapped in useCallback so it's stable for useEffect and child components
+  const refreshLeads = useCallback(async () => {
     const activeTerms = keywords.filter(k => k.active).map(k => k.term);
     if (activeTerms.length === 0) {
-      alert("Please add and enable some keywords first!");
+      console.warn("No active keywords found for scan.");
       return;
     }
 
+    if (isRefreshing) return;
+
     setIsRefreshing(true);
     try {
+      console.log(`Starting discovery scan for: ${activeTerms.join(', ')}`);
       const results = await discoverNewLeads(activeTerms);
-      const newLeads: Lead[] = results.map((r, i) => ({
-        ...r as any,
-        id: Math.random().toString(36).substr(2, 9),
-        keywordId: 'random',
-        timestamp: Date.now() - (i * 300000),
-        status: 'new'
-      }));
-      setLeads(prev => [...newLeads, ...prev]);
+      
+      if (results && results.length > 0) {
+        const newLeads: Lead[] = results.map((r, i) => ({
+          ...r as any,
+          id: `lead-${Date.now()}-${i}`,
+          keywordId: 'manual-scan',
+          timestamp: Date.now() - (i * 1000 * 60 * 5), // spaced 5 mins apart
+          status: 'new'
+        }));
+        
+        setLeads(prev => {
+          // Prevent duplicates by checking content
+          const existingContent = new Set(prev.map(l => l.content));
+          const filteredNew = newLeads.filter(l => !existingContent.has(l.content));
+          return [...filteredNew, ...prev];
+        });
+        console.log(`Found ${newLeads.length} potential leads.`);
+      } else {
+        console.log("No new leads discovered in this cycle.");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Discovery failed:", err);
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [keywords, isRefreshing]);
+
+  // Hourly Auto-Scan implementation
+  useEffect(() => {
+    if (!settings.autoScan) return;
+
+    // Run discovery every 1 hour (3,600,000 milliseconds)
+    const HOURLY_INTERVAL = 3600000;
+    
+    const intervalId = setInterval(() => {
+      console.log("Auto-scan: Triggering hourly lead discovery...");
+      refreshLeads();
+    }, HOURLY_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, [settings.autoScan, refreshLeads]);
 
   const stats: Stats = {
     totalLeads: leads.length,
@@ -119,10 +150,10 @@ const App: React.FC = () => {
       <Sidebar currentView={view} onNavigate={setView} />
       
       <main className="flex-1 overflow-y-auto md:ml-64 relative">
-        {/* Top Progress for refreshing */}
+        {/* Top Progress bar */}
         {isRefreshing && (
-          <div className="absolute top-0 left-0 w-full h-1 bg-indigo-200 overflow-hidden z-50">
-            <div className="h-full bg-indigo-600 animate-[loading_1s_infinite]" style={{ width: '30%', transform: 'translateX(-100%)' }}></div>
+          <div className="absolute top-0 left-0 w-full h-1 bg-indigo-100 overflow-hidden z-50">
+            <div className="h-full bg-indigo-600 animate-[loading_1.5s_infinite]" style={{ width: '40%' }}></div>
           </div>
         )}
 
@@ -149,14 +180,14 @@ const App: React.FC = () => {
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto">
               <div className="text-center mb-10">
                 <h2 className="text-2xl font-bold mb-2">Platform Settings</h2>
-                <p className="text-slate-500">Configure your automation engine and preference.</p>
+                <p className="text-slate-500">Configure your automation engine and preferences.</p>
               </div>
               
               <div className="space-y-6">
                 <div className="group p-5 border border-slate-100 bg-slate-50/50 rounded-2xl flex justify-between items-center transition-all hover:border-indigo-100 hover:bg-white">
                   <div>
                     <h4 className="font-bold text-slate-900">Auto-Discovery Scan</h4>
-                    <p className="text-sm text-slate-500">Scan socials automatically in the background</p>
+                    <p className="text-sm text-slate-500">Scan socials automatically every 60 minutes</p>
                   </div>
                   <button 
                     onClick={toggleAutoScan}
@@ -197,13 +228,6 @@ const App: React.FC = () => {
           )}
         </div>
       </main>
-
-      <style>{`
-        @keyframes loading {
-          0% { transform: translateX(-100%) }
-          100% { transform: translateX(350%) }
-        }
-      `}</style>
     </div>
   );
 };
