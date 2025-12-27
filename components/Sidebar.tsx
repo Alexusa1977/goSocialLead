@@ -46,12 +46,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-slate-100">
-          <div className="bg-slate-900 text-white rounded-xl p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Plan: Pro</p>
-            <p className="text-sm font-medium mb-3">12/50 keywords used</p>
-            <div className="w-full bg-slate-700 h-1 rounded-full overflow-hidden">
-              <div className="bg-indigo-500 h-full w-[24%]" />
+        <div className="p-6 border-t border-slate-100 mt-auto">
+          <div className="flex items-center space-x-3 text-slate-400">
+            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-600">UN</span>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-700">Unlimited Account</p>
+              <p className="text-[10px] uppercase tracking-wider font-bold">Standard Node</p>
             </div>
           </div>
         </div>
