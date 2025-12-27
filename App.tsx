@@ -7,8 +7,17 @@ import LeadList from './components/LeadList.tsx';
 import KeywordManager from './components/KeywordManager.tsx';
 import { discoverNewLeads } from './services/geminiService.ts';
 
+// Extension for window object to support Veo and image generation key selection
+declare global {
+  /* Fix: Use the global AIStudio type to resolve the property type conflict */
+  interface Window {
+    aistudio?: AIStudio;
+  }
+}
+
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'leads' | 'keywords' | 'settings'>('dashboard');
+  const [needsApiKey, setNeedsApiKey] = useState(false);
   
   const [folders, setFolders] = useState<Folder[]>(() => {
     const saved = localStorage.getItem('sociallead_folders');
@@ -31,6 +40,19 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
   });
 
+  /* Fix: Check for API Key on mount as required for premium models like Veo */
+  useEffect(() => {
+    const checkApiKey = async () => {
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (!hasKey && !process.env.API_KEY) {
+          setNeedsApiKey(true);
+        }
+      }
+    };
+    checkApiKey();
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('sociallead_folders', JSON.stringify(folders));
   }, [folders]);
@@ -46,6 +68,14 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('sociallead_settings', JSON.stringify(settings));
   }, [settings]);
+
+  const handleSelectKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      /* Assume selection was successful to avoid race conditions */
+      setNeedsApiKey(false);
+    }
+  };
 
   const handleAddFolder = (name: string) => {
     const newFolder: Folder = { id: Math.random().toString(36).substr(2, 9), name, createdAt: Date.now() };
@@ -119,8 +149,12 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Discovery error details:", err);
+      /* Reset key selection state if error indicates missing resource or key */
+      if (err?.message?.includes("entity was not found") || err?.message?.includes("API Key")) {
+        setNeedsApiKey(true);
+      }
       const errorMessage = err?.message || "Internal API Error";
-      alert(`Lead discovery failed: ${errorMessage}. Please check your internet connection or ensure your keywords are not too restrictive.`);
+      alert(`Lead discovery failed: ${errorMessage}. Please ensure your API key is active and connected to a paid GCP project.`);
     } finally {
       setIsRefreshing(false);
     }
@@ -134,34 +168,54 @@ const App: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [settings.autoScan, refreshLeads]);
 
+  /* Fix: Calculate stats required for the Dashboard view */
   const stats: Stats = {
     totalLeads: leads.length,
     activeKeywords: keywords.filter(k => k.active).length,
     highIntentCount: leads.filter(l => l.intentScore > 80).length,
-    platforms: leads.reduce((acc, l) => {
-      acc[l.platform] = (acc[l.platform] || 0) + 1;
+    platforms: leads.reduce((acc, lead) => {
+      acc[lead.platform] = (acc[lead.platform] || 0) + 1;
       return acc;
     }, {} as Record<Platform, number>)
   };
 
+  if (needsApiKey) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">API Key Required</h2>
+          <p className="text-slate-500 mb-8">To scan social media and analyze leads, you need to connect your Google Gemini API key from a paid project.</p>
+          <button 
+            onClick={handleSelectKey}
+            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
+          >
+            Select API Key
+          </button>
+          <p className="mt-4 text-xs text-slate-400">
+            Learn more about <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-500 underline">billing requirements</a>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <Sidebar 
         currentView={view} 
         onNavigate={setView} 
-        onScan={refreshLeads}
+        onScan={refreshLeads} 
         isScanning={isRefreshing}
-        hasKeywords={keywords.filter(k => k.active).length > 0}
+        hasKeywords={keywords.some(k => k.active)}
       />
       
-      <main className="flex-1 overflow-y-auto md:ml-64 relative">
-        {isRefreshing && (
-          <div className="fixed top-0 right-0 left-0 md:left-64 h-1 bg-indigo-100 overflow-hidden z-[100]">
-            <div className="h-full bg-indigo-600 animate-[loading_1.5s_infinite]" style={{ width: '40%' }}></div>
-          </div>
-        )}
-
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">
+      <main className="md:ml-64 p-4 md:p-8 lg:p-12">
+        <div className="max-w-7xl mx-auto">
           {view === 'dashboard' && <Dashboard stats={stats} />}
           {view === 'leads' && (
             <LeadList 
@@ -174,34 +228,38 @@ const App: React.FC = () => {
           {view === 'keywords' && (
             <KeywordManager 
               folders={folders}
-              keywords={keywords} 
+              keywords={keywords}
               onAddFolder={handleAddFolder}
               onRemoveFolder={handleRemoveFolder}
-              onAddKeyword={handleAddKeyword} 
-              onRemoveKeyword={handleRemoveKeyword} 
-              onToggleKeyword={handleToggleKeyword} 
+              onAddKeyword={handleAddKeyword}
+              onRemoveKeyword={handleRemoveKeyword}
+              onToggleKeyword={handleToggleKeyword}
               onScan={refreshLeads}
             />
           )}
           {view === 'settings' && (
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto mt-10">
-              <div className="text-center mb-10">
-                <h2 className="text-2xl font-bold mb-2">Platform Settings</h2>
-                <p className="text-slate-500">Configure your local automation engine.</p>
-              </div>
-              
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm max-w-2xl">
+              <h2 className="text-2xl font-bold mb-6">Settings</h2>
               <div className="space-y-6">
-                <div className="p-5 border border-slate-100 bg-slate-50/50 rounded-2xl flex justify-between items-center transition-all">
+                <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-bold">Auto-Discovery Scan</h4>
-                    <p className="text-sm text-slate-500">Scan socials automatically every 60 minutes</p>
+                    <p className="font-bold text-slate-800">Auto-Scan Socials</p>
+                    <p className="text-sm text-slate-500">Automatically look for new leads every hour.</p>
                   </div>
                   <button 
-                    onClick={() => setSettings(s => ({ ...s, autoScan: !s.autoScan }))}
-                    className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${settings.autoScan ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                    onClick={() => setSettings({ ...settings, autoScan: !settings.autoScan })}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${settings.autoScan ? 'bg-indigo-600' : 'bg-slate-200'}`}
                   >
-                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white transition ${settings.autoScan ? 'translate-x-5' : 'translate-x-0'} translate-y-[2px]`} />
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${settings.autoScan ? 'left-7' : 'left-1'}`} />
                   </button>
+                </div>
+                <div className="pt-6 border-t border-slate-50">
+                   <button 
+                    onClick={handleSelectKey}
+                    className="text-indigo-600 font-bold text-sm hover:underline"
+                   >
+                     Change API Key 🔐
+                   </button>
                 </div>
               </div>
             </div>
@@ -212,4 +270,5 @@ const App: React.FC = () => {
   );
 };
 
+/* Fix: Export the App component as default to resolve the module resolution error in index.tsx */
 export default App;
