@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Keyword } from '../types';
+import { Keyword } from '../types.ts';
 
 interface KeywordManagerProps {
   keywords: Keyword[];

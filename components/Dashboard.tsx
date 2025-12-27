@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { Stats, Platform } from '../types';
+import { Stats } from '../types.ts';
 
 interface DashboardProps {
   stats: Stats;
