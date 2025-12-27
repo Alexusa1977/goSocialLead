@@ -6,7 +6,7 @@ import { analyzeLeadWithAI } from '../services/geminiService.ts';
 interface LeadListProps {
   leads: Lead[];
   onUpdateStatus: (id: string, status: Lead['status']) => void;
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
   keywords: string[];
 }
 
@@ -15,10 +15,17 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isBtnRefreshing, setIsBtnRefreshing] = useState(false);
 
-  const handleManualRefresh = async () => {
+  const handleManualRefresh = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isBtnRefreshing) return;
     setIsBtnRefreshing(true);
-    await onRefresh();
-    setIsBtnRefreshing(false);
+    try {
+      await onRefresh();
+    } catch (err) {
+      console.error("Manual refresh error:", err);
+    } finally {
+      setIsBtnRefreshing(false);
+    }
   };
 
   const handleAnalyze = async (lead: Lead) => {
@@ -44,7 +51,7 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Lead Feed</h2>
-          <p className="text-slate-500">Recent social mentions matching your keywords.</p>
+          <p className="text-slate-500">Recent local and global social mentions.</p>
         </div>
         <button 
           onClick={handleManualRefresh}
@@ -69,7 +76,7 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
         <div className="xl:col-span-2 space-y-4">
           {leads.length === 0 ? (
             <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center">
-              <p className="text-slate-400">No leads found yet. Try adding more keywords or refreshing.</p>
+              <p className="text-slate-400">No leads found yet. Try adding keywords with locations and scanning.</p>
             </div>
           ) : (
             leads.map(lead => (
@@ -85,7 +92,14 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
                     <span className="text-xl mr-2">{getPlatformIcon(lead.platform)}</span>
                     <div>
                       <h4 className="font-bold text-slate-900">{lead.author}</h4>
-                      <p className="text-xs text-slate-400">{new Date(lead.timestamp).toLocaleString()} • {lead.platform}</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="text-xs text-slate-400">{new Date(lead.timestamp).toLocaleTimeString()} • {lead.platform}</p>
+                        {lead.location && lead.location !== 'Global' && (
+                          <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">
+                            📍 {lead.location}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -151,7 +165,10 @@ const LeadList: React.FC<LeadListProps> = ({ leads, onUpdateStatus, onRefresh, k
               
               <div className="p-4 bg-slate-50 rounded-xl">
                 <p className="text-sm text-slate-800 leading-relaxed italic">"{selectedLead.content}"</p>
-                <a href={selectedLead.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs text-indigo-600 font-medium">View Original Post ↗</a>
+                <div className="mt-2 flex items-center justify-between">
+                  <a href={selectedLead.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 font-medium">View Original Post ↗</a>
+                  {selectedLead.location && <span className="text-[10px] text-slate-400">📍 {selectedLead.location}</span>}
+                </div>
               </div>
 
               {selectedLead.aiAnalysis ? (

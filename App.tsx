@@ -62,11 +62,12 @@ const App: React.FC = () => {
   };
 
   // Keyword Actions
-  const handleAddKeyword = (folderId: string, term: string) => {
+  const handleAddKeyword = (folderId: string, term: string, location?: string) => {
     const newKw: Keyword = {
       id: Math.random().toString(36).substr(2, 9),
       folderId,
       term,
+      location,
       active: true,
       createdAt: Date.now()
     };
@@ -87,18 +88,24 @@ const App: React.FC = () => {
 
   // Improved Lead Discovery Function
   const refreshLeads = useCallback(async () => {
-    const activeTerms = keywords.filter(k => k.active).map(k => k.term);
-    if (activeTerms.length === 0) {
+    const activeKeywordConfigs = keywords
+      .filter(k => k.active)
+      .map(k => ({ term: k.term, location: k.location }));
+
+    if (activeKeywordConfigs.length === 0) {
       alert("Please add and enable some keywords first!");
       return;
     }
 
-    if (isRefreshing) return;
+    if (isRefreshing) {
+      console.log("Already scanning, skipping request.");
+      return;
+    }
 
     setIsRefreshing(true);
     try {
-      console.log("Discovery started for:", activeTerms);
-      const results = await discoverNewLeads(activeTerms);
+      console.log("Discovery started for keywords:", activeKeywordConfigs);
+      const results = await discoverNewLeads(activeKeywordConfigs);
       
       if (results && results.length > 0) {
         const newLeads: Lead[] = results.map((r, i) => ({
@@ -112,7 +119,8 @@ const App: React.FC = () => {
         setLeads(prev => {
           const existingContent = new Set(prev.map(l => l.content));
           const uniqueNew = newLeads.filter(l => !existingContent.has(l.content));
-          return [...uniqueNew, ...prev].slice(0, 500); // Limit to 500 for performance
+          const updated = [...uniqueNew, ...prev];
+          return updated.slice(0, 500); 
         });
         console.log(`Discovery successful. Found ${newLeads.length} leads.`);
       } else {
@@ -120,7 +128,12 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Discovery process error:", err);
-      alert("Social scan failed. Please check your console for details.");
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("API key")) {
+        alert("Discovery failed: Invalid or missing API Key. Ensure process.env.API_KEY is configured.");
+      } else {
+        alert("Lead discovery failed. Please try again in a few moments.");
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -129,9 +142,10 @@ const App: React.FC = () => {
   // Hourly Auto-Scan
   useEffect(() => {
     if (!settings.autoScan) return;
+    const HOURLY_INTERVAL = 3600000;
     const intervalId = setInterval(() => {
       refreshLeads();
-    }, 3600000);
+    }, HOURLY_INTERVAL);
     return () => clearInterval(intervalId);
   }, [settings.autoScan, refreshLeads]);
 
@@ -186,7 +200,7 @@ const App: React.FC = () => {
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto">
               <div className="text-center mb-10">
                 <h2 className="text-2xl font-bold mb-2">Platform Settings</h2>
-                <p className="text-slate-500">Configure your automation engine and preferences.</p>
+                <p className="text-slate-500">Configure your local automation engine and preferences.</p>
               </div>
               
               <div className="space-y-6">
@@ -223,7 +237,7 @@ const App: React.FC = () => {
                        <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold">G</div>
                        <div>
                          <p className="text-sm font-bold text-slate-900">Gemini AI Model</p>
-                         <p className="text-xs text-indigo-600">Flash 2.5 Active</p>
+                         <p className="text-xs text-indigo-600">Flash 3 Active</p>
                        </div>
                      </div>
                      <span className="text-xs font-bold text-slate-400">Connected</span>

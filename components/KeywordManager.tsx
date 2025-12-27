@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Keyword, Folder } from '../types.ts';
 
 interface KeywordManagerProps {
@@ -7,7 +7,7 @@ interface KeywordManagerProps {
   keywords: Keyword[];
   onAddFolder: (name: string) => void;
   onRemoveFolder: (id: string) => void;
-  onAddKeyword: (folderId: string, term: string) => void;
+  onAddKeyword: (folderId: string, term: string, location?: string) => void;
   onRemoveKeyword: (id: string) => void;
   onToggleKeyword: (id: string) => void;
   onScan: () => Promise<void>;
@@ -24,9 +24,25 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
   onScan 
 }) => {
   const [newFolderName, setNewFolderName] = useState('');
-  const [activeFolderId, setActiveFolderId] = useState<string | null>(folders[0]?.id || null);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [newTerm, setNewTerm] = useState('');
+  const [newLocation, setNewLocation] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+
+  // Persistence of active folder
+  useEffect(() => {
+    const saved = localStorage.getItem('sociallead_active_folder_id');
+    if (saved && folders.find(f => f.id === saved)) {
+      setActiveFolderId(saved);
+    } else if (folders.length > 0) {
+      setActiveFolderId(folders[0].id);
+    }
+  }, [folders]);
+
+  const handleActiveFolderChange = (id: string) => {
+    setActiveFolderId(id);
+    localStorage.setItem('sociallead_active_folder_id', id);
+  };
 
   const handleAddFolder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,15 +55,23 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
   const handleAddKeyword = (e: React.FormEvent) => {
     e.preventDefault();
     if (newTerm.trim() && activeFolderId) {
-      onAddKeyword(activeFolderId, newTerm.trim());
+      onAddKeyword(activeFolderId, newTerm.trim(), newLocation.trim() || undefined);
       setNewTerm('');
+      setNewLocation('');
     }
   };
 
-  const handleScanClick = async () => {
+  const handleScanClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isScanning) return;
     setIsScanning(true);
-    await onScan();
-    setIsScanning(false);
+    try {
+      await onScan();
+    } catch (e) {
+      console.error("KeywordManager scan error:", e);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const activeFolderKeywords = keywords.filter(k => k.folderId === activeFolderId);
@@ -56,8 +80,8 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
     <div className="max-w-5xl mx-auto space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Keyword Strategy</h2>
-          <p className="text-slate-500">Organize and monitor your lead generation intent terms.</p>
+          <h2 className="text-2xl font-bold text-slate-900">Keyword & Location Strategy</h2>
+          <p className="text-slate-500">Monitor local intent across different cities and states.</p>
         </div>
         <button
           onClick={handleScanClick}
@@ -67,7 +91,7 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
           {isScanning ? (
              <span className="flex items-center">
                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-               AI Searching...
+               Finding Leads...
              </span>
           ) : (
             <span className="flex items-center">
@@ -88,7 +112,7 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
             {folders.map(folder => (
               <div key={folder.id} className="flex group">
                 <button
-                  onClick={() => setActiveFolderId(folder.id)}
+                  onClick={() => handleActiveFolderChange(folder.id)}
                   className={`flex-1 flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     activeFolderId === folder.id 
                       ? 'bg-indigo-50 text-indigo-700' 
@@ -127,19 +151,28 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
         <div className="lg:col-span-3 space-y-6">
           {activeFolderId ? (
             <>
-              <form onSubmit={handleAddKeyword} className="flex gap-2 p-1 bg-white rounded-2xl shadow-sm border border-slate-100">
+              <form onSubmit={handleAddKeyword} className="flex flex-col md:flex-row gap-2 p-1 bg-white rounded-2xl shadow-sm border border-slate-100">
                 <input
                   type="text"
+                  required
                   value={newTerm}
                   onChange={(e) => setNewTerm(e.target.value)}
-                  placeholder={`Add keyword to ${folders.find(f => f.id === activeFolderId)?.name}...`}
+                  placeholder="Service/Topic (e.g. Web Design)"
+                  className="flex-1 px-5 py-3 rounded-xl border-none focus:outline-none focus:ring-0 text-slate-700 bg-transparent"
+                />
+                <div className="w-px h-6 bg-slate-200 hidden md:block self-center"></div>
+                <input
+                  type="text"
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                  placeholder="City, State (Optional)"
                   className="flex-1 px-5 py-3 rounded-xl border-none focus:outline-none focus:ring-0 text-slate-700 bg-transparent"
                 />
                 <button 
                   type="submit"
-                  className="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm"
+                  className="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm whitespace-nowrap"
                 >
-                  Add
+                  Add Keyword
                 </button>
               </form>
 
@@ -155,7 +188,7 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
                   {activeFolderKeywords.length === 0 ? (
                     <div className="p-16 text-center text-slate-400">
                       <p className="mb-2">This folder is empty.</p>
-                      <p className="text-xs">Add specific intent-based keywords to start discovery.</p>
+                      <p className="text-xs">Add keywords with locations to start local discovery.</p>
                     </div>
                   ) : (
                     activeFolderKeywords.map(kw => (
@@ -170,7 +203,12 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({
                             {kw.active && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
                           </button>
                           <div>
-                            <p className={`font-medium transition-all ${kw.active ? 'text-slate-900' : 'text-slate-400 line-through'}`}>{kw.term}</p>
+                            <p className={`font-medium transition-all ${kw.active ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
+                              {kw.term}
+                            </p>
+                            {kw.location && (
+                              <p className="text-xs text-indigo-500 font-medium">📍 {kw.location}</p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">

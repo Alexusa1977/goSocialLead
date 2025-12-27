@@ -11,6 +11,7 @@ export interface Keyword {
   id: string;
   folderId: string;
   term: string;
+  location?: string; // New field for City/State targeting
   active: boolean;
   createdAt: number;
 }
@@ -24,6 +25,7 @@ export interface Lead {
   timestamp: number;
   url: string;
   intentScore: number; // 0-100
+  location?: string; // Detected or targeted location
   status: 'new' | 'contacted' | 'rejected' | 'archived';
   aiAnalysis?: {
     summary: string;
