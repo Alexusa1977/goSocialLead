@@ -2,11 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Lead } from "../types.ts";
 
-// Initialize with a fallback empty string if API_KEY is missing to prevent crash, 
-// though the platform should always provide it.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// Ensure the API Key is fresh
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
 export const analyzeLeadWithAI = async (leadContent: string, keywords: string[]): Promise<Lead['aiAnalysis']> => {
+  const ai = getAI();
   const prompt = `Analyze this social media post for business lead potential. 
   The relevant keywords are: ${keywords.join(', ')}.
   
@@ -45,9 +45,11 @@ export const analyzeLeadWithAI = async (leadContent: string, keywords: string[])
 
 export const discoverNewLeads = async (keywords: string[]): Promise<Partial<Lead>[]> => {
   if (keywords.length === 0) return [];
+  const ai = getAI();
 
-  const prompt = `Generate 3 realistic social media posts (from platforms like Reddit, Twitter, Facebook) that would be considered organic leads for the following business keywords: ${keywords.join(', ')}.
-  Return the data in a structured JSON format.`;
+  const prompt = `Act as a social media monitoring tool. Generate 5 highly realistic, unique social media posts (Reddit, Twitter, or LinkedIn style) that are clear organic leads (people asking for help or recommendations) for these keywords: ${keywords.join(', ')}. 
+  
+  IMPORTANT: Return ONLY a JSON array. Do not include markdown formatting like \`\`\`json.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -72,7 +74,10 @@ export const discoverNewLeads = async (keywords: string[]): Promise<Partial<Lead
       }
     });
 
-    return JSON.parse(response.text.trim());
+    const text = response.text.trim();
+    // Clean up potential markdown formatting if model ignores system instructions
+    const jsonStr = text.startsWith('```') ? text.replace(/```json|```/g, '') : text;
+    return JSON.parse(jsonStr);
   } catch (error) {
     console.error("Discovery Error:", error);
     return [];

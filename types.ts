@@ -1,8 +1,15 @@
 
 export type Platform = 'Reddit' | 'Twitter' | 'Facebook' | 'LinkedIn' | 'Quora';
 
+export interface Folder {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface Keyword {
   id: string;
+  folderId: string;
   term: string;
   active: boolean;
   createdAt: number;

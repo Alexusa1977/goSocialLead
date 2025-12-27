@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Keyword, Lead, Stats, Platform } from './types.ts';
+import { Keyword, Folder, Lead, Stats, Platform } from './types.ts';
 import Sidebar from './components/Sidebar.tsx';
 import Dashboard from './components/Dashboard.tsx';
 import LeadList from './components/LeadList.tsx';
@@ -9,54 +9,63 @@ import { discoverNewLeads } from './services/geminiService.ts';
 
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'leads' | 'keywords' | 'settings'>('dashboard');
-  const [keywords, setKeywords] = useState<Keyword[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Settings state
-  const [settings, setSettings] = useState({
-    autoScan: true,
-    emailNotifications: false,
+  // State with initial local storage loading
+  const [folders, setFolders] = useState<Folder[]>(() => {
+    const saved = localStorage.getItem('sociallead_folders');
+    return saved ? JSON.parse(saved) : [{ id: 'default', name: 'General Leads', createdAt: Date.now() }];
   });
 
-  // Initial dummy data for better UX
+  const [keywords, setKeywords] = useState<Keyword[]>(() => {
+    const saved = localStorage.getItem('sociallead_keywords');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [leads, setLeads] = useState<Lead[]>(() => {
+    const saved = localStorage.getItem('sociallead_leads');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('sociallead_settings');
+    return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
+  });
+
+  // Persistent storage sync
   useEffect(() => {
-    const initialKeywords: Keyword[] = [
-      { id: '1', term: 'web design help', active: true, createdAt: Date.now() - 1000000 },
-      { id: '2', term: 'best sales tool', active: true, createdAt: Date.now() - 2000000 },
-    ];
-    setKeywords(initialKeywords);
+    localStorage.setItem('sociallead_folders', JSON.stringify(folders));
+  }, [folders]);
 
-    const initialLeads: Lead[] = [
-      {
-        id: 'l1',
-        keywordId: '1',
-        platform: 'Reddit',
-        author: 'design_enthusiast',
-        content: 'I am struggling to build my personal portfolio. Anyone know a good web designer or a builder that is not overpriced?',
-        timestamp: Date.now() - 3600000,
-        url: 'https://reddit.com/r/design/123',
-        intentScore: 88,
-        status: 'new'
-      },
-      {
-        id: 'l2',
-        keywordId: '2',
-        platform: 'Twitter',
-        author: 'SaaSFounderX',
-        content: 'Our sales team is growing and we need a way to track organic leads on social. Any recommendations for automation?',
-        timestamp: Date.now() - 7200000,
-        url: 'https://twitter.com/saas/status/456',
-        intentScore: 94,
-        status: 'new'
-      }
-    ];
-    setLeads(initialLeads);
-  }, []);
+  useEffect(() => {
+    localStorage.setItem('sociallead_keywords', JSON.stringify(keywords));
+  }, [keywords]);
 
-  const handleAddKeyword = (term: string) => {
+  useEffect(() => {
+    localStorage.setItem('sociallead_leads', JSON.stringify(leads));
+  }, [leads]);
+
+  useEffect(() => {
+    localStorage.setItem('sociallead_settings', JSON.stringify(settings));
+  }, [settings]);
+
+  // Folder Actions
+  const handleAddFolder = (name: string) => {
+    const newFolder: Folder = { id: Math.random().toString(36).substr(2, 9), name, createdAt: Date.now() };
+    setFolders(prev => [...prev, newFolder]);
+  };
+
+  const handleRemoveFolder = (id: string) => {
+    if (folders.length <= 1) return alert("You must have at least one folder.");
+    setFolders(prev => prev.filter(f => f.id !== id));
+    setKeywords(prev => prev.filter(k => k.folderId !== id));
+  };
+
+  // Keyword Actions
+  const handleAddKeyword = (folderId: string, term: string) => {
     const newKw: Keyword = {
       id: Math.random().toString(36).substr(2, 9),
+      folderId,
       term,
       active: true,
       createdAt: Date.now()
@@ -76,11 +85,11 @@ const App: React.FC = () => {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, status } : l));
   };
 
-  // Wrapped in useCallback so it's stable for useEffect and child components
+  // Improved Lead Discovery Function
   const refreshLeads = useCallback(async () => {
     const activeTerms = keywords.filter(k => k.active).map(k => k.term);
     if (activeTerms.length === 0) {
-      console.warn("No active keywords found for scan.");
+      alert("Please add and enable some keywords first!");
       return;
     }
 
@@ -88,47 +97,41 @@ const App: React.FC = () => {
 
     setIsRefreshing(true);
     try {
-      console.log(`Starting discovery scan for: ${activeTerms.join(', ')}`);
+      console.log("Discovery started for:", activeTerms);
       const results = await discoverNewLeads(activeTerms);
       
       if (results && results.length > 0) {
         const newLeads: Lead[] = results.map((r, i) => ({
           ...r as any,
-          id: `lead-${Date.now()}-${i}`,
-          keywordId: 'manual-scan',
-          timestamp: Date.now() - (i * 1000 * 60 * 5), // spaced 5 mins apart
+          id: `lead-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 5)}`,
+          keywordId: 'ai-discovery',
+          timestamp: Date.now() - (i * 300000),
           status: 'new'
         }));
         
         setLeads(prev => {
-          // Prevent duplicates by checking content
           const existingContent = new Set(prev.map(l => l.content));
-          const filteredNew = newLeads.filter(l => !existingContent.has(l.content));
-          return [...filteredNew, ...prev];
+          const uniqueNew = newLeads.filter(l => !existingContent.has(l.content));
+          return [...uniqueNew, ...prev].slice(0, 500); // Limit to 500 for performance
         });
-        console.log(`Found ${newLeads.length} potential leads.`);
+        console.log(`Discovery successful. Found ${newLeads.length} leads.`);
       } else {
-        console.log("No new leads discovered in this cycle.");
+        console.log("No new leads found in this scan.");
       }
     } catch (err) {
-      console.error("Discovery failed:", err);
+      console.error("Discovery process error:", err);
+      alert("Social scan failed. Please check your console for details.");
     } finally {
       setIsRefreshing(false);
     }
   }, [keywords, isRefreshing]);
 
-  // Hourly Auto-Scan implementation
+  // Hourly Auto-Scan
   useEffect(() => {
     if (!settings.autoScan) return;
-
-    // Run discovery every 1 hour (3,600,000 milliseconds)
-    const HOURLY_INTERVAL = 3600000;
-    
     const intervalId = setInterval(() => {
-      console.log("Auto-scan: Triggering hourly lead discovery...");
       refreshLeads();
-    }, HOURLY_INTERVAL);
-
+    }, 3600000);
     return () => clearInterval(intervalId);
   }, [settings.autoScan, refreshLeads]);
 
@@ -169,10 +172,13 @@ const App: React.FC = () => {
           )}
           {view === 'keywords' && (
             <KeywordManager 
+              folders={folders}
               keywords={keywords} 
-              onAdd={handleAddKeyword} 
-              onRemove={handleRemoveKeyword} 
-              onToggle={handleToggleKeyword} 
+              onAddFolder={handleAddFolder}
+              onRemoveFolder={handleRemoveFolder}
+              onAddKeyword={handleAddKeyword} 
+              onRemoveKeyword={handleRemoveKeyword} 
+              onToggleKeyword={handleToggleKeyword} 
               onScan={refreshLeads}
             />
           )}

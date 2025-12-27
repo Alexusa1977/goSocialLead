@@ -1,23 +1,45 @@
 
 import React, { useState } from 'react';
-import { Keyword } from '../types.ts';
+import { Keyword, Folder } from '../types.ts';
 
 interface KeywordManagerProps {
+  folders: Folder[];
   keywords: Keyword[];
-  onAdd: (term: string) => void;
-  onRemove: (id: string) => void;
-  onToggle: (id: string) => void;
+  onAddFolder: (name: string) => void;
+  onRemoveFolder: (id: string) => void;
+  onAddKeyword: (folderId: string, term: string) => void;
+  onRemoveKeyword: (id: string) => void;
+  onToggleKeyword: (id: string) => void;
   onScan: () => Promise<void>;
 }
 
-const KeywordManager: React.FC<KeywordManagerProps> = ({ keywords, onAdd, onRemove, onToggle, onScan }) => {
+const KeywordManager: React.FC<KeywordManagerProps> = ({ 
+  folders, 
+  keywords, 
+  onAddFolder, 
+  onRemoveFolder,
+  onAddKeyword, 
+  onRemoveKeyword, 
+  onToggleKeyword, 
+  onScan 
+}) => {
+  const [newFolderName, setNewFolderName] = useState('');
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(folders[0]?.id || null);
   const [newTerm, setNewTerm] = useState('');
   const [isScanning, setIsScanning] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleAddFolder = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newTerm.trim()) {
-      onAdd(newTerm.trim());
+    if (newFolderName.trim()) {
+      onAddFolder(newFolderName.trim());
+      setNewFolderName('');
+    }
+  };
+
+  const handleAddKeyword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTerm.trim() && activeFolderId) {
+      onAddKeyword(activeFolderId, newTerm.trim());
       setNewTerm('');
     }
   };
@@ -28,17 +50,19 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({ keywords, onAdd, onRemo
     setIsScanning(false);
   };
 
+  const activeFolderKeywords = keywords.filter(k => k.folderId === activeFolderId);
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-5xl mx-auto space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Keyword Strategy</h2>
-          <p className="text-slate-500">Define the topics or pain points you want to monitor.</p>
+          <p className="text-slate-500">Organize and monitor your lead generation intent terms.</p>
         </div>
         <button
           onClick={handleScanClick}
           disabled={isScanning || keywords.filter(k => k.active).length === 0}
-          className="flex items-center justify-center px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md group"
+          className="flex items-center justify-center px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md group"
         >
           {isScanning ? (
              <span className="flex items-center">
@@ -54,60 +78,119 @@ const KeywordManager: React.FC<KeywordManagerProps> = ({ keywords, onAdd, onRemo
         </button>
       </header>
 
-      <form onSubmit={handleSubmit} className="flex gap-2 p-1 bg-white rounded-2xl shadow-sm border border-slate-100">
-        <input
-          type="text"
-          value={newTerm}
-          onChange={(e) => setNewTerm(e.target.value)}
-          placeholder="Enter a new search term..."
-          className="flex-1 px-5 py-3 rounded-xl border-none focus:outline-none focus:ring-0 text-slate-700 bg-transparent"
-        />
-        <button 
-          type="submit"
-          className="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm"
-        >
-          Add Keyword
-        </button>
-      </form>
-
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-          <h3 className="font-bold text-slate-900">Current Keywords</h3>
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{keywords.length} ACTIVE TERMS</span>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Folders Sidebar */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Folders</h3>
+          </div>
+          <div className="space-y-1">
+            {folders.map(folder => (
+              <div key={folder.id} className="flex group">
+                <button
+                  onClick={() => setActiveFolderId(folder.id)}
+                  className={`flex-1 flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeFolderId === folder.id 
+                      ? 'bg-indigo-50 text-indigo-700' 
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <svg className={`w-4 h-4 mr-2 ${activeFolderId === folder.id ? 'text-indigo-500' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  {folder.name}
+                  <span className="ml-auto text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600">
+                    {keywords.filter(k => k.folderId === folder.id).length}
+                  </span>
+                </button>
+                <button 
+                  onClick={() => onRemoveFolder(folder.id)}
+                  className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 transition-opacity"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <form onSubmit={handleAddFolder} className="pt-2">
+            <input
+              type="text"
+              placeholder="+ New Folder"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              className="w-full text-xs px-3 py-2 border border-dashed border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500 bg-transparent text-slate-500"
+            />
+          </form>
         </div>
-        <div className="divide-y divide-slate-50">
-          {keywords.length === 0 ? (
-            <div className="p-12 text-center text-slate-400">
-              <p>No keywords added yet. Start by defining your target intent terms.</p>
-            </div>
-          ) : (
-            keywords.map(kw => (
-              <div key={kw.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors group">
-                <div className="flex items-center space-x-4">
-                  <div className={`w-2.5 h-2.5 rounded-full ${kw.active ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 'bg-slate-300'}`} />
-                  <div>
-                    <p className={`font-medium transition-all ${kw.active ? 'text-slate-900 translate-x-0' : 'text-slate-400 line-through translate-x-1'}`}>{kw.term}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Added {new Date(kw.createdAt).toLocaleDateString()}</p>
-                  </div>
+
+        {/* Keywords Content */}
+        <div className="lg:col-span-3 space-y-6">
+          {activeFolderId ? (
+            <>
+              <form onSubmit={handleAddKeyword} className="flex gap-2 p-1 bg-white rounded-2xl shadow-sm border border-slate-100">
+                <input
+                  type="text"
+                  value={newTerm}
+                  onChange={(e) => setNewTerm(e.target.value)}
+                  placeholder={`Add keyword to ${folders.find(f => f.id === activeFolderId)?.name}...`}
+                  className="flex-1 px-5 py-3 rounded-xl border-none focus:outline-none focus:ring-0 text-slate-700 bg-transparent"
+                />
+                <button 
+                  type="submit"
+                  className="px-6 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm"
+                >
+                  Add
+                </button>
+              </form>
+
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+                  <h3 className="font-bold text-slate-900 flex items-center">
+                    <span className="mr-2 text-lg">📁</span>
+                    {folders.find(f => f.id === activeFolderId)?.name}
+                  </h3>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{activeFolderKeywords.length} TERMS</span>
                 </div>
-                <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => onToggle(kw.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      kw.active ? 'text-slate-600 bg-slate-100 hover:bg-slate-200' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100'
-                    }`}
-                  >
-                    {kw.active ? 'Mute' : 'Activate'}
-                  </button>
-                  <button 
-                    onClick={() => onRemove(kw.id)}
-                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
+                <div className="divide-y divide-slate-50">
+                  {activeFolderKeywords.length === 0 ? (
+                    <div className="p-16 text-center text-slate-400">
+                      <p className="mb-2">This folder is empty.</p>
+                      <p className="text-xs">Add specific intent-based keywords to start discovery.</p>
+                    </div>
+                  ) : (
+                    activeFolderKeywords.map(kw => (
+                      <div key={kw.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors group">
+                        <div className="flex items-center space-x-4">
+                          <button 
+                            onClick={() => onToggleKeyword(kw.id)}
+                            className={`w-5 h-5 rounded border transition-colors flex items-center justify-center ${
+                              kw.active ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'
+                            }`}
+                          >
+                            {kw.active && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+                          </button>
+                          <div>
+                            <p className={`font-medium transition-all ${kw.active ? 'text-slate-900' : 'text-slate-400 line-through'}`}>{kw.term}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button 
+                            onClick={() => onRemoveKeyword(kw.id)}
+                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
-            ))
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400">
+              <p>Select or create a folder to manage keywords.</p>
+            </div>
           )}
         </div>
       </div>
