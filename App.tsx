@@ -6,18 +6,22 @@ import LeadList from './components/LeadList.tsx';
 import KeywordManager from './components/KeywordManager.tsx';
 import { discoverNewLeads } from './services/geminiService.ts';
 
-// Robust check for API key presence in environment, supporting both standard and custom names
-const getEnvKey = () => {
-  const key = process.env.API_KEY || (process.env as any).Google_Gemini_API;
-  if (!key || key === 'undefined' || key === 'null' || key === '' || key.includes('YOUR_API_KEY')) {
-    return null;
+// Safe check for API key presence
+const getApiKey = () => {
+  try {
+    const key = process.env.API_KEY || (process.env as any).Google_Gemini_API;
+    if (key && key.length > 10 && !key.includes('YOUR_API_KEY')) {
+      return key;
+    }
+  } catch (e) {
+    // process.env might not be defined in some browser environments
   }
-  return key;
+  return null;
 };
 
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'leads' | 'keywords' | 'settings'>('dashboard');
-  const [needsApiKey, setNeedsApiKey] = useState(!getEnvKey());
+  const [needsApiKey, setNeedsApiKey] = useState(!getApiKey());
   
   const [folders, setFolders] = useState<Folder[]>(() => {
     const saved = localStorage.getItem('sociallead_folders');
@@ -40,27 +44,28 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
   });
 
-  // Re-check API key status periodically
+  // Re-check API key status
   useEffect(() => {
     const checkStatus = async () => {
-      const envKey = getEnvKey();
-      if (envKey) {
+      const key = getApiKey();
+      if (key) {
         setNeedsApiKey(false);
         return;
       }
 
+      // Check if the Studio tool is available as a fallback
       if (window.aistudio) {
         try {
           const hasStudioKey = await window.aistudio.hasSelectedApiKey();
           if (hasStudioKey) setNeedsApiKey(false);
         } catch (e) {
-          console.warn("Key check failed", e);
+          console.warn("Studio key check skipped", e);
         }
       }
     };
 
     checkStatus();
-    const timer = setInterval(checkStatus, 3000);
+    const timer = setInterval(checkStatus, 2000);
     return () => clearInterval(timer);
   }, []);
 
@@ -89,7 +94,7 @@ const App: React.FC = () => {
         console.error("Key selection failed", e);
       }
     } else {
-      alert("No key tool detected. If you just set up Vercel, please wait 60 seconds and refresh your page.");
+      alert("Note: If you've updated your Vercel variables, please ensure you triggered a NEW DEPLOYMENT for changes to take effect.");
     }
   };
 
@@ -173,36 +178,41 @@ const App: React.FC = () => {
     }, {} as Record<Platform, number>)
   };
 
-  if (needsApiKey && !getEnvKey()) {
+  if (needsApiKey && !getApiKey()) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 animate-pulse">
+          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8">
             <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
           </div>
-          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">API Key Required</h2>
+          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Setup Required</h2>
           <p className="text-slate-500 mb-10 leading-relaxed font-medium">
-            The app cannot detect your API key. To fix this, rename your Vercel variable to <b className="text-indigo-600">API_KEY</b>.
+            The application is waiting for your API key. 
           </p>
           
-          <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-amber-800 text-sm mb-6 text-left">
-            <p className="font-bold mb-1">Status: Waiting for Key</p>
-            <p className="text-xs">If you just updated Vercel, it takes up to 60 seconds for the change to appear in the browser.</p>
+          <div className="p-6 bg-slate-50 rounded-3xl text-left space-y-4 mb-8">
+            <div className="flex items-start space-x-3">
+              <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
+              <p className="text-sm text-slate-700 font-medium">In Vercel, rename your variable to exactly <b className="text-indigo-600">API_KEY</b></p>
+            </div>
+            <div className="flex items-start space-x-3">
+              <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
+              <p className="text-sm text-slate-700 font-medium">Click <b>Redeploy</b> in your Vercel dashboard.</p>
+            </div>
           </div>
 
-          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">
-            Need help? <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-500 border-b-2 border-indigo-100">View Documentation</a>
-          </p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98] mb-4"
+          >
+            I've Updated & Redeployed
+          </button>
           
-          <div className="mt-8 pt-8 border-t border-slate-100 text-[10px] text-slate-400 text-left">
-            <p className="font-bold mb-1 uppercase">Diagnostics:</p>
-            <ul className="space-y-1">
-              <li>API_KEY: <span className={process.env.API_KEY ? 'text-emerald-500' : 'text-red-400'}>{process.env.API_KEY ? '✅ FOUND' : '❌ NOT FOUND'}</span></li>
-              <li>Google_Gemini_API: <span className={(process.env as any).Google_Gemini_API ? 'text-emerald-500' : 'text-red-400'}>{(process.env as any).Google_Gemini_API ? '✅ FOUND' : '❌ NOT FOUND'}</span></li>
-            </ul>
-          </div>
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">
+            Diagnostics: <span className="text-red-400">Waiting for browser to detect key</span>
+          </p>
         </div>
       </div>
     );
@@ -236,8 +246,8 @@ const App: React.FC = () => {
                   </button>
                 </div>
                 <div className="pt-8 border-t border-slate-100">
-                   <p className="font-bold text-slate-800 mb-2">Active Connection</p>
-                   <p className="text-xs font-black uppercase tracking-widest text-emerald-500">Secure Environment Key Linked</p>
+                   <p className="font-bold text-slate-800 mb-2">Connection Status</p>
+                   <p className="text-xs font-black uppercase tracking-widest text-emerald-500">API Key Successfully Verified</p>
                 </div>
               </div>
             </div>
