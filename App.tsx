@@ -7,21 +7,17 @@ import KeywordManager from './components/KeywordManager.tsx';
 import { discoverNewLeads } from './services/geminiService.ts';
 
 // Safe check for API key presence
-const getApiKey = () => {
-  try {
+const checkApiKey = () => {
+  if (typeof process !== 'undefined' && process.env) {
     const key = process.env.API_KEY || (process.env as any).Google_Gemini_API;
-    if (key && key.length > 10 && !key.includes('YOUR_API_KEY')) {
-      return key;
-    }
-  } catch (e) {
-    // process.env might not be defined in some browser environments
+    return (key && key !== 'undefined' && key.length > 5);
   }
-  return null;
+  return false;
 };
 
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'leads' | 'keywords' | 'settings'>('dashboard');
-  const [needsApiKey, setNeedsApiKey] = useState(!getApiKey());
+  const [hasValidKey, setHasValidKey] = useState(checkApiKey());
   
   const [folders, setFolders] = useState<Folder[]>(() => {
     const saved = localStorage.getItem('sociallead_folders');
@@ -44,29 +40,12 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
   });
 
-  // Re-check API key status
+  // Background key check
   useEffect(() => {
-    const checkStatus = async () => {
-      const key = getApiKey();
-      if (key) {
-        setNeedsApiKey(false);
-        return;
-      }
-
-      // Check if the Studio tool is available as a fallback
-      if (window.aistudio) {
-        try {
-          const hasStudioKey = await window.aistudio.hasSelectedApiKey();
-          if (hasStudioKey) setNeedsApiKey(false);
-        } catch (e) {
-          console.warn("Studio key check skipped", e);
-        }
-      }
-    };
-
-    checkStatus();
-    const timer = setInterval(checkStatus, 2000);
-    return () => clearInterval(timer);
+    const interval = setInterval(() => {
+      setHasValidKey(checkApiKey());
+    }, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -84,19 +63,6 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('sociallead_settings', JSON.stringify(settings));
   }, [settings]);
-
-  const handleSelectKey = async () => {
-    if (window.aistudio) {
-      try {
-        await window.aistudio.openSelectKey();
-        setNeedsApiKey(false);
-      } catch (e) {
-        console.error("Key selection failed", e);
-      }
-    } else {
-      alert("Note: If you've updated your Vercel variables, please ensure you triggered a NEW DEPLOYMENT for changes to take effect.");
-    }
-  };
 
   const handleAddFolder = (name: string) => {
     const newFolder: Folder = { id: Math.random().toString(36).substr(2, 9), name, createdAt: Date.now() };
@@ -134,6 +100,11 @@ const App: React.FC = () => {
   };
 
   const refreshLeads = useCallback(async () => {
+    if (!checkApiKey()) {
+      alert("Missing API Key! Please check your Vercel Environment Variables. Ensure 'API_KEY' is set and your site is redeployed.");
+      return;
+    }
+
     const activeKeywordConfigs = keywords
       .filter(k => k.active)
       .map(k => ({ term: k.term, location: k.location }));
@@ -178,46 +149,6 @@ const App: React.FC = () => {
     }, {} as Record<Platform, number>)
   };
 
-  if (needsApiKey && !getApiKey()) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8">
-            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-            </svg>
-          </div>
-          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Setup Required</h2>
-          <p className="text-slate-500 mb-10 leading-relaxed font-medium">
-            The application is waiting for your API key. 
-          </p>
-          
-          <div className="p-6 bg-slate-50 rounded-3xl text-left space-y-4 mb-8">
-            <div className="flex items-start space-x-3">
-              <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
-              <p className="text-sm text-slate-700 font-medium">In Vercel, rename your variable to exactly <b className="text-indigo-600">API_KEY</b></p>
-            </div>
-            <div className="flex items-start space-x-3">
-              <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
-              <p className="text-sm text-slate-700 font-medium">Click <b>Redeploy</b> in your Vercel dashboard.</p>
-            </div>
-          </div>
-
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98] mb-4"
-          >
-            I've Updated & Redeployed
-          </button>
-          
-          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">
-            Diagnostics: <span className="text-red-400">Waiting for browser to detect key</span>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 selection:bg-indigo-100">
       <Sidebar 
@@ -229,12 +160,34 @@ const App: React.FC = () => {
       />
       <main className="md:ml-64 p-4 md:p-10">
         <div className="max-w-7xl mx-auto">
+          {!hasValidKey && (
+            <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-3xl flex items-start space-x-4">
+              <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-amber-900">API Key Connection Pending</p>
+                <p className="text-sm text-amber-800 mb-4 leading-relaxed">
+                  Your API Key wasn't detected. If you just updated Vercel, please <b>Redeploy</b> your site for changes to take effect.
+                </p>
+                <div className="flex space-x-4">
+                  <button onClick={() => window.location.reload()} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 transition-colors">
+                    Check Connection Again
+                  </button>
+                  <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-50 transition-colors">
+                    Go to Vercel Dashboard
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
           {view === 'dashboard' && <Dashboard stats={stats} />}
           {view === 'leads' && <LeadList leads={leads} onUpdateStatus={handleUpdateLeadStatus} onRefresh={refreshLeads} keywords={keywords.map(k => k.term)} />}
           {view === 'keywords' && <KeywordManager folders={folders} keywords={keywords} onAddFolder={handleAddFolder} onRemoveFolder={handleRemoveFolder} onAddKeyword={handleAddKeyword} onRemoveKeyword={handleRemoveKeyword} onToggleKeyword={handleToggleKeyword} onScan={refreshLeads} />}
           {view === 'settings' && (
             <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm max-w-2xl">
-              <h2 className="text-3xl font-black mb-8 tracking-tight">System Configuration</h2>
+              <h2 className="text-3xl font-black mb-8 tracking-tight text-slate-900">System Configuration</h2>
               <div className="space-y-8">
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
                   <div>
@@ -247,7 +200,27 @@ const App: React.FC = () => {
                 </div>
                 <div className="pt-8 border-t border-slate-100">
                    <p className="font-bold text-slate-800 mb-2">Connection Status</p>
-                   <p className="text-xs font-black uppercase tracking-widest text-emerald-500">API Key Successfully Verified</p>
+                   {hasValidKey ? (
+                     <p className="text-xs font-black uppercase tracking-widest text-emerald-500 flex items-center">
+                       <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span>
+                       API Key Successfully Linked
+                     </p>
+                   ) : (
+                     <div className="space-y-4">
+                       <p className="text-xs font-black uppercase tracking-widest text-red-500 flex items-center">
+                         <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                         API Key Missing
+                       </p>
+                       <div className="text-[11px] text-slate-500 bg-slate-50 p-4 rounded-xl font-mono">
+                         <p className="font-bold mb-1">Troubleshooting:</p>
+                         <ul className="list-disc ml-4 space-y-1">
+                           <li>Rename variable to <b>API_KEY</b> in Vercel.</li>
+                           <li><b>Redeploy</b> the project (Required).</li>
+                           <li>Refresh this page.</li>
+                         </ul>
+                       </div>
+                     </div>
+                   )}
                 </div>
               </div>
             </div>
