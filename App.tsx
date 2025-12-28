@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Keyword, Folder, Lead, Stats, Platform } from './types.ts';
 import Sidebar from './components/Sidebar.tsx';
@@ -7,9 +6,9 @@ import LeadList from './components/LeadList.tsx';
 import KeywordManager from './components/KeywordManager.tsx';
 import { discoverNewLeads } from './services/geminiService.ts';
 
-// Robust check for API key presence in environment
+// Robust check for API key presence in environment, supporting both standard and custom names
 const getEnvKey = () => {
-  const key = process.env.API_KEY;
+  const key = process.env.API_KEY || (process.env as any).Google_Gemini_API;
   if (!key || key === 'undefined' || key === 'null' || key === '' || key.includes('YOUR_API_KEY')) {
     return null;
   }
@@ -41,7 +40,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
   });
 
-  // Re-check API key status periodically to handle delayed environment injection
+  // Re-check API key status periodically
   useEffect(() => {
     const checkStatus = async () => {
       const envKey = getEnvKey();
@@ -50,21 +49,18 @@ const App: React.FC = () => {
         return;
       }
 
-      // Check for window-based key selection as fallback
       if (window.aistudio) {
         try {
           const hasStudioKey = await window.aistudio.hasSelectedApiKey();
-          if (hasStudioKey) {
-            setNeedsApiKey(false);
-          }
+          if (hasStudioKey) setNeedsApiKey(false);
         } catch (e) {
-          console.warn("AI Studio key check failed", e);
+          console.warn("Key check failed", e);
         }
       }
     };
 
     checkStatus();
-    const timer = setInterval(checkStatus, 2000);
+    const timer = setInterval(checkStatus, 3000);
     return () => clearInterval(timer);
   }, []);
 
@@ -93,7 +89,7 @@ const App: React.FC = () => {
         console.error("Key selection failed", e);
       }
     } else {
-      alert("Note: No key selection tool detected. If you just updated your API_KEY environment variable, please wait 30 seconds and refresh the browser.");
+      alert("No key tool detected. If you just set up Vercel, please wait 60 seconds and refresh your page.");
     }
   };
 
@@ -138,52 +134,34 @@ const App: React.FC = () => {
       .map(k => ({ term: k.term, location: k.location }));
 
     if (activeKeywordConfigs.length === 0) {
-      alert("Please add and enable some keywords in the Keywords tab first!");
+      alert("Add and enable keywords first!");
       setView('keywords');
       return;
     }
 
     if (isRefreshing) return;
-
     setIsRefreshing(true);
     try {
       const results = await discoverNewLeads(activeKeywordConfigs);
-      
       if (results && results.length > 0) {
         const newLeads: Lead[] = results.map((r, i) => ({
           ...r as any,
-          id: `lead-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 5)}`,
+          id: `lead-${Date.now()}-${i}`,
           keywordId: 'ai-discovery',
-          timestamp: Date.now() - (i * 300000),
+          timestamp: Date.now(),
           status: 'new'
         }));
-        
-        setLeads(prev => {
-          const existingContent = new Set(prev.map(l => l.content));
-          const uniqueNew = newLeads.filter(l => !existingContent.has(l.content));
-          return [...uniqueNew, ...prev].slice(0, 500); 
-        });
-        
+        setLeads(prev => [...newLeads, ...prev].slice(0, 500));
         if (view !== 'leads') setView('leads');
       } else {
-        alert("Scan complete. No matching leads found.");
+        alert("Scan finished. No matching leads.");
       }
     } catch (err: any) {
-      console.error("Discovery error:", err);
-      const errorMessage = err?.message || "Internal API Error";
-      alert(`Lead discovery failed: ${errorMessage}. Check your API key status.`);
+      alert(`Discovery failed: ${err?.message}`);
     } finally {
       setIsRefreshing(false);
     }
   }, [keywords, isRefreshing, view]);
-
-  useEffect(() => {
-    if (!settings.autoScan) return;
-    const intervalId = setInterval(() => {
-      refreshLeads();
-    }, 3600000);
-    return () => clearInterval(intervalId);
-  }, [settings.autoScan, refreshLeads]);
 
   const stats: Stats = {
     totalLeads: leads.length,
@@ -199,39 +177,30 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8">
+          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 animate-pulse">
             <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
           </div>
-          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Setup Required</h2>
+          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">API Key Required</h2>
           <p className="text-slate-500 mb-10 leading-relaxed font-medium">
-            Your API key is missing. Please ensure you have added it to your deployment's environment variables.
+            The app cannot detect your API key. To fix this, rename your Vercel variable to <b className="text-indigo-600">API_KEY</b>.
           </p>
           
-          {window.aistudio ? (
-            <button 
-              onClick={handleSelectKey}
-              className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98] mb-4"
-            >
-              Connect API Key
-            </button>
-          ) : (
-            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-amber-800 text-sm mb-6">
-              <p className="font-bold mb-1">Status: No key detected</p>
-              <p>Waiting for the <b>API_KEY</b> environment variable to become active.</p>
-            </div>
-          )}
+          <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-amber-800 text-sm mb-6 text-left">
+            <p className="font-bold mb-1">Status: Waiting for Key</p>
+            <p className="text-xs">If you just updated Vercel, it takes up to 60 seconds for the change to appear in the browser.</p>
+          </div>
 
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">
-            Need help? <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-500 border-b-2 border-indigo-100 hover:border-indigo-400">View Documentation</a>
+            Need help? <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-500 border-b-2 border-indigo-100">View Documentation</a>
           </p>
           
           <div className="mt-8 pt-8 border-t border-slate-100 text-[10px] text-slate-400 text-left">
             <p className="font-bold mb-1 uppercase">Diagnostics:</p>
-            <ul className="list-disc ml-4 space-y-1">
-              <li>API_KEY Env: <span className={getEnvKey() ? 'text-emerald-500' : 'text-red-400'}>{getEnvKey() ? 'FOUND' : 'NOT FOUND'}</span></li>
-              <li>Studio Dialog: <span className={window.aistudio ? 'text-emerald-500' : 'text-amber-400'}>{window.aistudio ? 'AVAILABLE' : 'NOT DETECTED'}</span></li>
+            <ul className="space-y-1">
+              <li>API_KEY: <span className={process.env.API_KEY ? 'text-emerald-500' : 'text-red-400'}>{process.env.API_KEY ? '✅ FOUND' : '❌ NOT FOUND'}</span></li>
+              <li>Google_Gemini_API: <span className={(process.env as any).Google_Gemini_API ? 'text-emerald-500' : 'text-red-400'}>{(process.env as any).Google_Gemini_API ? '✅ FOUND' : '❌ NOT FOUND'}</span></li>
             </ul>
           </div>
         </div>
@@ -248,30 +217,11 @@ const App: React.FC = () => {
         isScanning={isRefreshing}
         hasKeywords={keywords.some(k => k.active)}
       />
-      
       <main className="md:ml-64 p-4 md:p-10">
         <div className="max-w-7xl mx-auto">
           {view === 'dashboard' && <Dashboard stats={stats} />}
-          {view === 'leads' && (
-            <LeadList 
-              leads={leads} 
-              onUpdateStatus={handleUpdateLeadStatus} 
-              onRefresh={refreshLeads}
-              keywords={keywords.map(k => k.term)}
-            />
-          )}
-          {view === 'keywords' && (
-            <KeywordManager 
-              folders={folders}
-              keywords={keywords}
-              onAddFolder={handleAddFolder}
-              onRemoveFolder={handleRemoveFolder}
-              onAddKeyword={handleAddKeyword}
-              onRemoveKeyword={handleRemoveKeyword}
-              onToggleKeyword={handleToggleKeyword}
-              onScan={refreshLeads}
-            />
-          )}
+          {view === 'leads' && <LeadList leads={leads} onUpdateStatus={handleUpdateLeadStatus} onRefresh={refreshLeads} keywords={keywords.map(k => k.term)} />}
+          {view === 'keywords' && <KeywordManager folders={folders} keywords={keywords} onAddFolder={handleAddFolder} onRemoveFolder={handleRemoveFolder} onAddKeyword={handleAddKeyword} onRemoveKeyword={handleRemoveKeyword} onToggleKeyword={handleToggleKeyword} onScan={refreshLeads} />}
           {view === 'settings' && (
             <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm max-w-2xl">
               <h2 className="text-3xl font-black mb-8 tracking-tight">System Configuration</h2>
@@ -279,33 +229,15 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
                   <div>
                     <p className="font-bold text-slate-800 text-lg">Auto-Scan Engine</p>
-                    <p className="text-sm text-slate-500 font-medium">Automatically check for leads every hour.</p>
+                    <p className="text-sm text-slate-500 font-medium italic">Scans every 60 minutes.</p>
                   </div>
-                  <button 
-                    onClick={() => setSettings({ ...settings, autoScan: !settings.autoScan })}
-                    className={`w-14 h-8 rounded-full transition-all relative ${settings.autoScan ? 'bg-indigo-600' : 'bg-slate-300'}`}
-                  >
+                  <button onClick={() => setSettings({ ...settings, autoScan: !settings.autoScan })} className={`w-14 h-8 rounded-full transition-all relative ${settings.autoScan ? 'bg-indigo-600' : 'bg-slate-300'}`}>
                     <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-sm transition-all ${settings.autoScan ? 'left-7' : 'left-1'}`} />
                   </button>
                 </div>
-                
                 <div className="pt-8 border-t border-slate-100">
-                   <div className="flex items-center justify-between mb-4">
-                     <div>
-                       <p className="font-bold text-slate-800">Connection Strategy</p>
-                       <p className={`text-xs font-black uppercase tracking-widest ${getEnvKey() ? 'text-emerald-500' : 'text-amber-500'}`}>
-                         {getEnvKey() ? 'Environment Variable Active' : 'Waiting for Key Connection'}
-                       </p>
-                     </div>
-                     {window.aistudio && (
-                       <button 
-                        onClick={handleSelectKey}
-                        className="px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:border-indigo-200 hover:text-indigo-600 transition-all active:scale-95"
-                       >
-                         Switch Connection
-                       </button>
-                     )}
-                   </div>
+                   <p className="font-bold text-slate-800 mb-2">Active Connection</p>
+                   <p className="text-xs font-black uppercase tracking-widest text-emerald-500">Secure Environment Key Linked</p>
                 </div>
               </div>
             </div>

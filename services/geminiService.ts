@@ -1,8 +1,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Lead } from "../types.ts";
 
+const getApiKey = () => {
+  // Check for the standard name and the custom one seen in user screenshots
+  return process.env.API_KEY || (process.env as any).Google_Gemini_API;
+};
+
 export const analyzeLeadWithAI = async (leadContent: string, keywords: string[]): Promise<Lead['aiAnalysis']> => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = getApiKey();
   if (!apiKey) throw new Error("API Key is missing.");
   
   const ai = new GoogleGenAI({ apiKey });
@@ -45,9 +50,9 @@ export const analyzeLeadWithAI = async (leadContent: string, keywords: string[])
 export const discoverNewLeads = async (keywordConfigs: { term: string; location?: string }[]): Promise<Partial<Lead>[]> => {
   if (!keywordConfigs || keywordConfigs.length === 0) return [];
   
-  const apiKey = process.env.API_KEY;
+  const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error("API Key is not configured. Please select your API key using the setup button.");
+    throw new Error("API Key is not configured. Please ensure your environment variable is named exactly 'API_KEY'.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
