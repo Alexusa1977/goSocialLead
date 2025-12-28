@@ -2,17 +2,20 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Lead } from "../types.ts";
 
 const getApiKey = () => {
-  // Try standard environment variable
-  if (typeof process !== 'undefined' && process.env) {
-    const key = process.env.API_KEY || (process.env as any).Google_Gemini_API;
-    if (key && key !== 'undefined') return key;
+  // Check standard environment variable first
+  if (typeof process !== 'undefined' && process.env && process.env.API_KEY && process.env.API_KEY !== 'undefined') {
+    return process.env.API_KEY;
   }
+  // Check fallback keys
+  const fallback = (process as any)?.env?.Google_Gemini_API;
+  if (fallback && fallback !== 'undefined') return fallback;
+  
   return null;
 };
 
 export const analyzeLeadWithAI = async (leadContent: string, keywords: string[]): Promise<Lead['aiAnalysis']> => {
   const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key not found in environment.");
+  if (!apiKey) throw new Error("API Key not found. Please connect your key in the top banner.");
   
   const ai = new GoogleGenAI({ apiKey });
   const prompt = `Analyze this social media post for business lead potential. 
@@ -56,7 +59,7 @@ export const discoverNewLeads = async (keywordConfigs: { term: string; location?
   
   const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error("Missing API Key. Ensure your environment variable is named exactly 'API_KEY' and that you have redeployed your site.");
+    throw new Error("Missing API Key. Please click 'Connect Key Manually' in the header to fix this.");
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -69,7 +72,7 @@ export const discoverNewLeads = async (keywordConfigs: { term: string; location?
   Return the results as a JSON object with a "leads" array.
   Each lead object must contain: platform, author, content, intentScore (0-100), url (mock), and location.
   
-  Ensure posts are professional and do not contain sensitive or prohibited content to avoid triggering safety filters.`;
+  Ensure posts are professional and do not contain sensitive or prohibited content.`;
 
   try {
     const response = await ai.models.generateContent({

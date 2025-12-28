@@ -6,18 +6,19 @@ import LeadList from './components/LeadList.tsx';
 import KeywordManager from './components/KeywordManager.tsx';
 import { discoverNewLeads } from './services/geminiService.ts';
 
-// Safe check for API key presence
-const checkApiKey = () => {
+// Robust check for API key
+const checkApiKeyStatus = () => {
   if (typeof process !== 'undefined' && process.env) {
     const key = process.env.API_KEY || (process.env as any).Google_Gemini_API;
-    return (key && key !== 'undefined' && key.length > 5);
+    return (!!key && key !== 'undefined' && key.length > 5);
   }
   return false;
 };
 
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'leads' | 'keywords' | 'settings'>('dashboard');
-  const [hasValidKey, setHasValidKey] = useState(checkApiKey());
+  const [hasValidKey, setHasValidKey] = useState(checkApiKeyStatus());
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const [folders, setFolders] = useState<Folder[]>(() => {
     const saved = localStorage.getItem('sociallead_folders');
@@ -34,19 +35,46 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('sociallead_settings');
     return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
   });
 
-  // Background key check
+  // Watch for key status changes
   useEffect(() => {
-    const interval = setInterval(() => {
-      setHasValidKey(checkApiKey());
-    }, 2000);
+    const check = async () => {
+      const isEnvValid = checkApiKeyStatus();
+      if (isEnvValid) {
+        setHasValidKey(true);
+        return;
+      }
+      
+      // Secondary check for manual studio key
+      if ((window as any).aistudio) {
+        try {
+          const hasStudioKey = await (window as any).aistudio.hasSelectedApiKey();
+          if (hasStudioKey) setHasValidKey(true);
+        } catch (e) {}
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleOpenKeySelector = async () => {
+    if ((window as any).aistudio) {
+      try {
+        await (window as any).aistudio.openSelectKey();
+        setHasValidKey(true);
+      } catch (e) {
+        console.error("Failed to open key selector", e);
+      }
+    } else {
+      alert("Manual selector not available. Please ensure your Vercel API_KEY variable is correct and you have Redeployed.");
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('sociallead_folders', JSON.stringify(folders));
@@ -100,8 +128,8 @@ const App: React.FC = () => {
   };
 
   const refreshLeads = useCallback(async () => {
-    if (!checkApiKey()) {
-      alert("Missing API Key! Please check your Vercel Environment Variables. Ensure 'API_KEY' is set and your site is redeployed.");
+    if (!hasValidKey) {
+      alert("No active API Key found. Please click 'Connect Key Manually' in the orange banner.");
       return;
     }
 
@@ -125,19 +153,19 @@ const App: React.FC = () => {
           id: `lead-${Date.now()}-${i}`,
           keywordId: 'ai-discovery',
           timestamp: Date.now(),
-          status: 'new'
+          status: 'new' as const
         }));
         setLeads(prev => [...newLeads, ...prev].slice(0, 500));
         if (view !== 'leads') setView('leads');
       } else {
-        alert("Scan finished. No matching leads.");
+        alert("Scan finished. No matching leads found this time.");
       }
     } catch (err: any) {
-      alert(`Discovery failed: ${err?.message}`);
+      alert(`Discovery failed: ${err?.message || 'Check your API Key and billing status.'}`);
     } finally {
       setIsRefreshing(false);
     }
-  }, [keywords, isRefreshing, view]);
+  }, [keywords, isRefreshing, view, hasValidKey]);
 
   const stats: Stats = {
     totalLeads: leads.length,
@@ -161,23 +189,31 @@ const App: React.FC = () => {
       <main className="md:ml-64 p-4 md:p-10">
         <div className="max-w-7xl mx-auto">
           {!hasValidKey && (
-            <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-3xl flex items-start space-x-4">
-              <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-amber-900">API Key Connection Pending</p>
-                <p className="text-sm text-amber-800 mb-4 leading-relaxed">
-                  Your API Key wasn't detected. If you just updated Vercel, please <b>Redeploy</b> your site for changes to take effect.
-                </p>
-                <div className="flex space-x-4">
-                  <button onClick={() => window.location.reload()} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 transition-colors">
-                    Check Connection Again
-                  </button>
-                  <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-50 transition-colors">
-                    Go to Vercel Dashboard
-                  </a>
+            <div className="mb-8 p-6 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex items-start space-x-4">
+                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                 </div>
+                <div>
+                  <p className="font-bold text-amber-900 text-lg">Still waiting for API Key...</p>
+                  <p className="text-sm text-amber-800 leading-relaxed opacity-80 max-w-lg">
+                    If you already set <b className="font-bold">API_KEY</b> in Vercel and <b className="font-bold">Redeployed</b>, it may take a minute. Alternatively, use the button to connect it manually right now.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button 
+                  onClick={handleOpenKeySelector}
+                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
+                >
+                  Connect Key Manually
+                </button>
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="px-6 py-3 bg-white border border-amber-300 text-amber-700 rounded-xl text-sm font-bold hover:bg-amber-100 transition-colors"
+                >
+                  Refresh Page
+                </button>
               </div>
             </div>
           )}
@@ -201,24 +237,25 @@ const App: React.FC = () => {
                 <div className="pt-8 border-t border-slate-100">
                    <p className="font-bold text-slate-800 mb-2">Connection Status</p>
                    {hasValidKey ? (
-                     <p className="text-xs font-black uppercase tracking-widest text-emerald-500 flex items-center">
-                       <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span>
-                       API Key Successfully Linked
-                     </p>
+                     <div className="space-y-3">
+                       <p className="text-xs font-black uppercase tracking-widest text-emerald-500 flex items-center">
+                         <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span>
+                         API Key Successfully Linked
+                       </p>
+                       <p className="text-xs text-slate-400">Your paid plan is active and ready for high-volume scanning.</p>
+                     </div>
                    ) : (
                      <div className="space-y-4">
                        <p className="text-xs font-black uppercase tracking-widest text-red-500 flex items-center">
                          <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
                          API Key Missing
                        </p>
-                       <div className="text-[11px] text-slate-500 bg-slate-50 p-4 rounded-xl font-mono">
-                         <p className="font-bold mb-1">Troubleshooting:</p>
-                         <ul className="list-disc ml-4 space-y-1">
-                           <li>Rename variable to <b>API_KEY</b> in Vercel.</li>
-                           <li><b>Redeploy</b> the project (Required).</li>
-                           <li>Refresh this page.</li>
-                         </ul>
-                       </div>
+                       <button 
+                        onClick={handleOpenKeySelector}
+                        className="text-xs font-bold text-indigo-600 underline"
+                       >
+                         Open manual key selector
+                       </button>
                      </div>
                    )}
                 </div>
