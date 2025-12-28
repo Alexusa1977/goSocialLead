@@ -7,15 +7,18 @@ import LeadList from './components/LeadList.tsx';
 import KeywordManager from './components/KeywordManager.tsx';
 import { discoverNewLeads } from './services/geminiService.ts';
 
-// Robust check for API key presence
-const hasEnvKey = () => {
+// Robust check for API key presence in environment
+const getEnvKey = () => {
   const key = process.env.API_KEY;
-  return !!key && key !== 'undefined' && key !== 'null' && key.length > 5;
+  if (!key || key === 'undefined' || key === 'null' || key === '' || key.includes('YOUR_API_KEY')) {
+    return null;
+  }
+  return key;
 };
 
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'leads' | 'keywords' | 'settings'>('dashboard');
-  const [needsApiKey, setNeedsApiKey] = useState(!hasEnvKey());
+  const [needsApiKey, setNeedsApiKey] = useState(!getEnvKey());
   
   const [folders, setFolders] = useState<Folder[]>(() => {
     const saved = localStorage.getItem('sociallead_folders');
@@ -38,28 +41,30 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
   });
 
-  // Re-check API key status periodically to handle environment updates or async injection
+  // Re-check API key status periodically to handle delayed environment injection
   useEffect(() => {
     const checkStatus = async () => {
-      if (hasEnvKey()) {
+      const envKey = getEnvKey();
+      if (envKey) {
         setNeedsApiKey(false);
         return;
       }
 
+      // Check for window-based key selection as fallback
       if (window.aistudio) {
         try {
           const hasStudioKey = await window.aistudio.hasSelectedApiKey();
-          setNeedsApiKey(!hasStudioKey);
+          if (hasStudioKey) {
+            setNeedsApiKey(false);
+          }
         } catch (e) {
-          setNeedsApiKey(true);
+          console.warn("AI Studio key check failed", e);
         }
-      } else {
-        setNeedsApiKey(true);
       }
     };
 
     checkStatus();
-    const timer = setInterval(checkStatus, 3000);
+    const timer = setInterval(checkStatus, 2000);
     return () => clearInterval(timer);
   }, []);
 
@@ -83,13 +88,12 @@ const App: React.FC = () => {
     if (window.aistudio) {
       try {
         await window.aistudio.openSelectKey();
-        // Immediately bypass as requested by guidelines
         setNeedsApiKey(false);
       } catch (e) {
         console.error("Key selection failed", e);
       }
     } else {
-      alert("Note: This app is waiting for an environment API_KEY. If you've already added it, please wait a moment for the server to propagate changes and refresh the page.");
+      alert("Note: No key selection tool detected. If you just updated your API_KEY environment variable, please wait 30 seconds and refresh the browser.");
     }
   };
 
@@ -162,15 +166,12 @@ const App: React.FC = () => {
         
         if (view !== 'leads') setView('leads');
       } else {
-        alert("The scan completed but no new leads were found for your current keywords.");
+        alert("Scan complete. No matching leads found.");
       }
     } catch (err: any) {
-      console.error("Discovery error details:", err);
-      if (err?.message?.includes("Requested entity was not found") || err?.message?.includes("API Key is not configured")) {
-        setNeedsApiKey(true);
-      }
+      console.error("Discovery error:", err);
       const errorMessage = err?.message || "Internal API Error";
-      alert(`Lead discovery failed: ${errorMessage}. If you just added your key, try refreshing the page.`);
+      alert(`Lead discovery failed: ${errorMessage}. Check your API key status.`);
     } finally {
       setIsRefreshing(false);
     }
@@ -194,8 +195,7 @@ const App: React.FC = () => {
     }, {} as Record<Platform, number>)
   };
 
-  // Only show setup if there is NO env key AND we haven't confirmed a studio key
-  if (needsApiKey && !hasEnvKey()) {
+  if (needsApiKey && !getEnvKey()) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-md w-full text-center">
@@ -206,23 +206,32 @@ const App: React.FC = () => {
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Setup Required</h2>
           <p className="text-slate-500 mb-10 leading-relaxed font-medium">
-            Connect your Google Gemini API key to start monitoring social media for high-intent leads.
+            Your API key is missing. Please ensure you have added it to your deployment's environment variables.
           </p>
-          <button 
-            onClick={handleSelectKey}
-            className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98] mb-4"
-          >
-            Connect API Key
-          </button>
+          
+          {window.aistudio ? (
+            <button 
+              onClick={handleSelectKey}
+              className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98] mb-4"
+            >
+              Connect API Key
+            </button>
+          ) : (
+            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-amber-800 text-sm mb-6">
+              <p className="font-bold mb-1">Status: No key detected</p>
+              <p>Waiting for the <b>API_KEY</b> environment variable to become active.</p>
+            </div>
+          )}
+
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">
             Need help? <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-500 border-b-2 border-indigo-100 hover:border-indigo-400">View Documentation</a>
           </p>
-          <div className="mt-6 p-4 bg-slate-50 rounded-xl text-[10px] text-slate-400 text-left">
-            <p className="font-bold mb-1">Troubleshooting:</p>
+          
+          <div className="mt-8 pt-8 border-t border-slate-100 text-[10px] text-slate-400 text-left">
+            <p className="font-bold mb-1 uppercase">Diagnostics:</p>
             <ul className="list-disc ml-4 space-y-1">
-              <li>Ensure the <b>API_KEY</b> environment variable is set.</li>
-              <li>Wait 30-60 seconds after deployment for keys to sync.</li>
-              <li>Try refreshing this page completely.</li>
+              <li>API_KEY Env: <span className={getEnvKey() ? 'text-emerald-500' : 'text-red-400'}>{getEnvKey() ? 'FOUND' : 'NOT FOUND'}</span></li>
+              <li>Studio Dialog: <span className={window.aistudio ? 'text-emerald-500' : 'text-amber-400'}>{window.aistudio ? 'AVAILABLE' : 'NOT DETECTED'}</span></li>
             </ul>
           </div>
         </div>
@@ -265,12 +274,12 @@ const App: React.FC = () => {
           )}
           {view === 'settings' && (
             <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm max-w-2xl">
-              <h2 className="text-3xl font-black mb-8 tracking-tight">Platform Configuration</h2>
+              <h2 className="text-3xl font-black mb-8 tracking-tight">System Configuration</h2>
               <div className="space-y-8">
                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
                   <div>
-                    <p className="font-bold text-slate-800 text-lg">Auto-Discovery Engine</p>
-                    <p className="text-sm text-slate-500 font-medium italic">Continuously scan social networks every 60 minutes.</p>
+                    <p className="font-bold text-slate-800 text-lg">Auto-Scan Engine</p>
+                    <p className="text-sm text-slate-500 font-medium">Automatically check for leads every hour.</p>
                   </div>
                   <button 
                     onClick={() => setSettings({ ...settings, autoScan: !settings.autoScan })}
@@ -280,19 +289,23 @@ const App: React.FC = () => {
                   </button>
                 </div>
                 
-                <div className="pt-8 border-t border-slate-100 flex items-center justify-between">
-                   <div>
-                     <p className="font-bold text-slate-800">Connection Status</p>
-                     <p className={`text-xs font-black uppercase tracking-widest ${hasEnvKey() ? 'text-emerald-500' : 'text-amber-500'}`}>
-                       {hasEnvKey() ? 'Active (Environment Key)' : 'Awaiting Connection'}
-                     </p>
+                <div className="pt-8 border-t border-slate-100">
+                   <div className="flex items-center justify-between mb-4">
+                     <div>
+                       <p className="font-bold text-slate-800">Connection Strategy</p>
+                       <p className={`text-xs font-black uppercase tracking-widest ${getEnvKey() ? 'text-emerald-500' : 'text-amber-500'}`}>
+                         {getEnvKey() ? 'Environment Variable Active' : 'Waiting for Key Connection'}
+                       </p>
+                     </div>
+                     {window.aistudio && (
+                       <button 
+                        onClick={handleSelectKey}
+                        className="px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:border-indigo-200 hover:text-indigo-600 transition-all active:scale-95"
+                       >
+                         Switch Connection
+                       </button>
+                     )}
                    </div>
-                   <button 
-                    onClick={handleSelectKey}
-                    className="px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:border-indigo-200 hover:text-indigo-600 transition-all active:scale-95"
-                   >
-                     Manage Connection
-                   </button>
                 </div>
               </div>
             </div>
