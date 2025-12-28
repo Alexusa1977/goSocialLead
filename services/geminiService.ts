@@ -1,10 +1,9 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Lead } from "../types.ts";
 
 export const analyzeLeadWithAI = async (leadContent: string, keywords: string[]): Promise<Lead['aiAnalysis']> => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key is missing. Please check your configuration.");
+  if (!apiKey) throw new Error("API Key is missing.");
   
   const ai = new GoogleGenAI({ apiKey });
   const prompt = `Analyze this social media post for business lead potential. 
@@ -47,7 +46,9 @@ export const discoverNewLeads = async (keywordConfigs: { term: string; location?
   if (!keywordConfigs || keywordConfigs.length === 0) return [];
   
   const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("Environment API Key is not available.");
+  if (!apiKey) {
+    throw new Error("API Key is not configured. Please select your API key using the setup button.");
+  }
 
   const ai = new GoogleGenAI({ apiKey });
 

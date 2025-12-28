@@ -7,9 +7,8 @@ import LeadList from './components/LeadList.tsx';
 import KeywordManager from './components/KeywordManager.tsx';
 import { discoverNewLeads } from './services/geminiService.ts';
 
-// Extension for window object to support Veo and image generation key selection
 declare global {
-  /* Fix: Use the global AIStudio type to resolve the property type conflict */
+  // Use AIStudio type to match the existing definition as indicated by the compiler error
   interface Window {
     aistudio?: AIStudio;
   }
@@ -40,17 +39,30 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { autoScan: true, emailNotifications: false };
   });
 
-  /* Fix: Check for API Key on mount as required for premium models like Veo */
   useEffect(() => {
-    const checkApiKey = async () => {
+    const checkApiKeyStatus = async () => {
+      // If environment key is already present, we are good to go
+      if (process.env.API_KEY) {
+        setNeedsApiKey(false);
+        return;
+      }
+
+      // Otherwise, check if a key has been selected via the studio dialog
       if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey && !process.env.API_KEY) {
-          setNeedsApiKey(true);
+        try {
+          const hasKey = await window.aistudio.hasSelectedApiKey();
+          if (!hasKey) {
+            setNeedsApiKey(true);
+          }
+        } catch (e) {
+          console.error("AI Studio API check failed", e);
         }
+      } else {
+        // Fallback for environments without aistudio but missing process.env.API_KEY
+        setNeedsApiKey(true);
       }
     };
-    checkApiKey();
+    checkApiKeyStatus();
   }, []);
 
   useEffect(() => {
@@ -71,9 +83,15 @@ const App: React.FC = () => {
 
   const handleSelectKey = async () => {
     if (window.aistudio) {
-      await window.aistudio.openSelectKey();
-      /* Assume selection was successful to avoid race conditions */
-      setNeedsApiKey(false);
+      try {
+        await window.aistudio.openSelectKey();
+        // Proceed immediately to avoid race conditions with hasSelectedApiKey
+        setNeedsApiKey(false);
+      } catch (e) {
+        console.error("Key selection failed", e);
+      }
+    } else {
+      alert("API Key selection is not available in this environment. Please ensure process.env.API_KEY is set.");
     }
   };
 
@@ -119,6 +137,7 @@ const App: React.FC = () => {
 
     if (activeKeywordConfigs.length === 0) {
       alert("Please add and enable some keywords in the Keywords tab first!");
+      setView('keywords');
       return;
     }
 
@@ -149,12 +168,12 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Discovery error details:", err);
-      /* Reset key selection state if error indicates missing resource or key */
-      if (err?.message?.includes("entity was not found") || err?.message?.includes("API Key")) {
+      // As per guidelines: If the request fails with "Requested entity was not found.", reset key selection
+      if (err?.message?.includes("Requested entity was not found") || err?.message?.includes("API Key is not configured")) {
         setNeedsApiKey(true);
       }
       const errorMessage = err?.message || "Internal API Error";
-      alert(`Lead discovery failed: ${errorMessage}. Please ensure your API key is active and connected to a paid GCP project.`);
+      alert(`Lead discovery failed: ${errorMessage}. If the problem persists, try selecting your API key again.`);
     } finally {
       setIsRefreshing(false);
     }
@@ -168,7 +187,6 @@ const App: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [settings.autoScan, refreshLeads]);
 
-  /* Fix: Calculate stats required for the Dashboard view */
   const stats: Stats = {
     totalLeads: leads.length,
     activeKeywords: keywords.filter(k => k.active).length,
@@ -179,25 +197,27 @@ const App: React.FC = () => {
     }, {} as Record<Platform, number>)
   };
 
-  if (needsApiKey) {
+  if (needsApiKey && !process.env.API_KEY) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 max-w-md w-full text-center">
+          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-8 animate-bounce">
+            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">API Key Required</h2>
-          <p className="text-slate-500 mb-8">To scan social media and analyze leads, you need to connect your Google Gemini API key from a paid project.</p>
+          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Setup Required</h2>
+          <p className="text-slate-500 mb-10 leading-relaxed font-medium text-lg">
+            Connect your Google Gemini API key to start monitoring social media for high-intent leads.
+          </p>
           <button 
             onClick={handleSelectKey}
-            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
+            className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98] mb-4"
           >
-            Select API Key
+            Connect API Key
           </button>
-          <p className="mt-4 text-xs text-slate-400">
-            Learn more about <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-500 underline">billing requirements</a>.
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">
+            Need help? <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-500 border-b-2 border-indigo-100 hover:border-indigo-400">View Documentation</a>
           </p>
         </div>
       </div>
@@ -205,7 +225,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900 selection:bg-indigo-100">
       <Sidebar 
         currentView={view} 
         onNavigate={setView} 
@@ -214,7 +234,7 @@ const App: React.FC = () => {
         hasKeywords={keywords.some(k => k.active)}
       />
       
-      <main className="md:ml-64 p-4 md:p-8 lg:p-12">
+      <main className="md:ml-64 p-4 md:p-10">
         <div className="max-w-7xl mx-auto">
           {view === 'dashboard' && <Dashboard stats={stats} />}
           {view === 'leads' && (
@@ -238,27 +258,32 @@ const App: React.FC = () => {
             />
           )}
           {view === 'settings' && (
-            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm max-w-2xl">
-              <h2 className="text-2xl font-bold mb-6">Settings</h2>
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
+            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm max-w-2xl">
+              <h2 className="text-3xl font-black mb-8 tracking-tight">Platform Configuration</h2>
+              <div className="space-y-8">
+                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
                   <div>
-                    <p className="font-bold text-slate-800">Auto-Scan Socials</p>
-                    <p className="text-sm text-slate-500">Automatically look for new leads every hour.</p>
+                    <p className="font-bold text-slate-800 text-lg">Auto-Discovery Engine</p>
+                    <p className="text-sm text-slate-500 font-medium italic">Continuously scan social networks every 60 minutes.</p>
                   </div>
                   <button 
                     onClick={() => setSettings({ ...settings, autoScan: !settings.autoScan })}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${settings.autoScan ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                    className={`w-14 h-8 rounded-full transition-all relative ${settings.autoScan ? 'bg-indigo-600' : 'bg-slate-300'}`}
                   >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${settings.autoScan ? 'left-7' : 'left-1'}`} />
+                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-sm transition-all ${settings.autoScan ? 'left-7' : 'left-1'}`} />
                   </button>
                 </div>
-                <div className="pt-6 border-t border-slate-50">
+                
+                <div className="pt-8 border-t border-slate-100 flex items-center justify-between">
+                   <div>
+                     <p className="font-bold text-slate-800">Connection Status</p>
+                     <p className="text-xs text-emerald-500 font-black uppercase tracking-widest">Active & Secure</p>
+                   </div>
                    <button 
                     onClick={handleSelectKey}
-                    className="text-indigo-600 font-bold text-sm hover:underline"
+                    className="px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:border-indigo-200 hover:text-indigo-600 transition-all active:scale-95"
                    >
-                     Change API Key 🔐
+                     Switch API Key
                    </button>
                 </div>
               </div>
@@ -270,5 +295,4 @@ const App: React.FC = () => {
   );
 };
 
-/* Fix: Export the App component as default to resolve the module resolution error in index.tsx */
 export default App;
